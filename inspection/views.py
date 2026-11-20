@@ -1,6 +1,7 @@
 from django.db.models import Count, Sum
 from django.utils import timezone
-from rest_framework import viewsets
+from django.utils.dateparse import parse_date
+from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 
@@ -26,6 +27,17 @@ def _bool_param(request, key):
     if raw is None:
         return None
     return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _int_param(request, key):
+    """把主键类查询参数安全转成 int：非法值返回 None（忽略该条件），而不是抛 500。"""
+    raw = request.query_params.get(key)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 class TeamViewSet(viewsets.ModelViewSet):
@@ -54,12 +66,14 @@ class ServiceViewSet(viewsets.ModelViewSet):
         qs = Service.objects.select_related("env", "team")
         params = self.request.query_params
 
-        if params.get("env"):
-            qs = qs.filter(env_id=params["env"])
+        env = _int_param(self.request, "env")
+        if env is not None:
+            qs = qs.filter(env_id=env)
         if params.get("env_code"):
             qs = qs.filter(env__code=params["env_code"])
-        if params.get("team"):
-            qs = qs.filter(team_id=params["team"])
+        team = _int_param(self.request, "team")
+        if team is not None:
+            qs = qs.filter(team_id=team)
         enabled = _bool_param(self.request, "enabled")
         if enabled is not None:
             qs = qs.filter(enabled=enabled)
@@ -67,10 +81,16 @@ class ServiceViewSet(viewsets.ModelViewSet):
             qs = qs.filter(name__icontains=params["q"])
         return qs
 
-    def perform_create(self, serializer):
-        # Token 由系统签发，不允许客户端自定义
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         service = serializer.save()
-        biz.issue_token(service)
+        # Token 在创建时就地签发；明文只在本次响应中出现一次
+        plain = biz.issue_token(service)
+        data = serializer.data
+        data["token"] = plain
+        headers = self.get_success_headers(serializer.data)
+        return Response(data, status=status.HTTP_201_CREATED, headers=headers)
 
     @action(detail=True, methods=["post"], url_path="check")
     def check(self, request, pk=None):
@@ -115,8 +135,9 @@ class HealthCheckLogViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = HealthCheckLog.objects.select_related("service", "service__env")
         params = self.request.query_params
-        if params.get("service"):
-            qs = qs.filter(service_id=params["service"])
+        service = _int_param(self.request, "service")
+        if service is not None:
+            qs = qs.filter(service_id=service)
         ok = _bool_param(self.request, "ok")
         if ok is not None:
             qs = qs.filter(ok=ok)
@@ -132,13 +153,18 @@ class DailyHealthStatViewSet(viewsets.ReadOnlyModelViewSet):
         qs = DailyHealthStat.objects.select_related("service", "env", "team")
         params = self.request.query_params
         if params.get("date"):
-            qs = qs.filter(stat_date=params["date"])
-        if params.get("service"):
-            qs = qs.filter(service_id=params["service"])
-        if params.get("env"):
-            qs = qs.filter(env_id=params["env"])
-        if params.get("team"):
-            qs = qs.filter(team_id=params["team"])
+            stat_date = parse_date(params["date"])
+            if stat_date:
+                qs = qs.filter(stat_date=stat_date)
+        service = _int_param(self.request, "service")
+        if service is not None:
+            qs = qs.filter(service_id=service)
+        env = _int_param(self.request, "env")
+        if env is not None:
+            qs = qs.filter(env_id=env)
+        team = _int_param(self.request, "team")
+        if team is not None:
+            qs = qs.filter(team_id=team)
         return qs
 
     @action(detail=False, methods=["get"], url_path="summary")

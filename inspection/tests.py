@@ -15,7 +15,7 @@ from django.utils import timezone
 from core import crypto
 from inspection import probes
 from inspection.models import DailyHealthStat, Environment, HealthCheckLog, Service, Team
-from inspection.services import build_daily_stats, issue_token
+from inspection.services import build_daily_stats, issue_token, rotate_all_tokens
 
 
 def make_aware(dt: datetime) -> datetime:
@@ -141,6 +141,18 @@ class TokenIssuanceTests(TestCase):
         self.assertIsNone(self.service.previous_token_cipher)
         self.assertIsNone(self.service.previous_token_expires_at)
 
+    def test_rotate_covers_disabled_services(self):
+        """题目要求重置「每个服务」的 Token，停用的服务也不能漏。"""
+        self.service.enabled = False
+        self.service.save(update_fields=["enabled"])
+        self.assertIsNone(self.service.token_cipher)
+
+        result = rotate_all_tokens()
+        self.service.refresh_from_db()
+        self.assertEqual(result["rotated"], Service.objects.count())
+        self.assertIsNotNone(self.service.token_cipher)
+        self.assertEqual(len(crypto.decrypt(self.service.token_cipher)), 43)
+
 
 class ApiTests(TestCase):
     def setUp(self):
@@ -199,3 +211,32 @@ class ApiTests(TestCase):
         header = response.headers.get("X-Request-Duration-Ms")
         self.assertIsNotNone(header)
         self.assertGreaterEqual(float(header), 0.0)
+
+    def test_create_returns_issued_token_plaintext(self):
+        payload = {
+            "name": "search-api",
+            "env": self.env.pk,
+            "team": self.team.pk,
+            "base_url": "http://127.0.0.1:8000",
+            "health_path": "api/ping/",
+        }
+        response = self.client.post(
+            reverse("service-list"), payload, content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        service = Service.objects.get(pk=body["id"])
+        # 明文随创建响应返回一次，且与库中密文对应
+        self.assertEqual(crypto.decrypt(service.token_cipher), body["token"])
+        self.assertEqual(service.token_hint, body["token"][-4:])
+        self.assertNotIn("token_cipher", body)
+
+    def test_invalid_query_params_are_ignored_not_500(self):
+        for url in (
+            "/api/services/?env=abc&team=x&enabled=whatever&q=%E5%95%A6",
+            "/api/checks/?service=abc&ok=maybe&trigger=hmm",
+            "/api/stats/?date=not-a-date&env=abc&service=x",
+        ):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)

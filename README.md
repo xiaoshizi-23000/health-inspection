@@ -60,7 +60,7 @@ python -m celery -A config beat -l info                       # 定时调度
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
 | GET | `/api/ping/` | 自身存活探针（演示用的巡检靶子） |
-| GET/POST | `/api/services/` | 服务列表 / 新建（新建时系统自动签发 Token） |
+| GET/POST | `/api/services/` | 服务列表 / 新建（自动签发 Token，明文随创建响应返回一次） |
 | GET/PUT/PATCH/DELETE | `/api/services/{id}/` | 服务详情 / 修改 / 删除 |
 | POST | `/api/services/{id}/check/` | **主动探测一次**，返回 `ok / status_code / latency_ms / error` |
 | POST | `/api/services/{id}/rotate-token/` | 立即轮换 Token，**明文只返回这一次** |
