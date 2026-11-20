@@ -1,0 +1,9 @@
+Django==5.2.4
+djangorestframework==3.18.3
+# 锁定 celery 5.3 / kombu 5.3：kombu 5.5+ 使用 Redis 6.2 才支持的
+# `ZADD ... GT` 语法，Redis 5.x 会直接报 ERR syntax error
+celery==5.3.6
+kombu==5.3.7
+redis==7.4.0
+requests==2.32.3
+cryptography==43.0.1
