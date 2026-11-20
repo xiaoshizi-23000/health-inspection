@@ -60,9 +60,13 @@ def issue_token(service: Service, grace_seconds: int | None = None, save: bool =
 
 
 def rotate_all_tokens() -> dict:
-    """逐个轮换，单个失败不影响其他服务（fail-fast 在这里是反模式）。"""
+    """逐个轮换，单个失败不影响其他服务（fail-fast 在这里是反模式）。
+
+    覆盖全部服务而不只是 enabled=True：停用的服务重新启用时
+    也必须拿到轮换过的 Token，否则会用到长期未更新的旧凭证。
+    """
     rotated, failed = 0, []
-    for service in Service.objects.filter(enabled=True).iterator(chunk_size=200):
+    for service in Service.objects.all().iterator(chunk_size=200):
         try:
             issue_token(service)
             rotated += 1
