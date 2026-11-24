@@ -80,7 +80,7 @@
       <h1>服务健康巡检 · 运维控制台</h1>
       <div class="sub">内部 HTTP 服务健康度管理 · 数据截至 {{ stat_date|default:"--" }}</div>
     </div>
-    <nav><a href="/api/">API 文档</a><a href="/admin/">后台管理</a></nav>
+    <nav><a href="/?tab=stats">报表入口</a><a href="/api/">API 文档</a><a href="/admin/">后台管理</a></nav>
   </header>
 
   <div class="cards">
@@ -96,7 +96,7 @@
       <div class="tab active" data-pane="ops">巡检操作</div>
       <div class="tab" data-pane="services">服务管理</div>
       <div class="tab" data-pane="checks">巡检明细</div>
-      <div class="tab" data-pane="stats">统计分析</div>
+      <div class="tab" data-pane="stats">报表统计</div>
       <div class="tab" data-pane="org">团队与环境</div>
     </div>
 
@@ -106,9 +106,10 @@
         <div class="row">
           <span class="muted" style="font-size:12px">后台服务</span>
           <span id="worker-badge" class="tag">检测中…</span>
-          <button id="btn-status" class="mini">检查状态</button>
-          <button id="btn-start" class="primary mini">一键启动后台服务</button>
-          <button id="btn-logs" class="mini">查看启动日志</button>
+      <button id="btn-status" class="mini">检查状态</button>
+      <button id="btn-start" class="primary mini">一键启动后台服务</button>
+      <button id="btn-logs" class="mini">查看启动日志</button>
+      <button id="btn-diag" class="mini">环境诊断</button>
         </div>
       </div>
       <div class="row">
@@ -233,12 +234,19 @@
     return '<span class="bar"><i style="width:'+Math.min(100,rate)+'%;background:'+color+'"></i></span><span style="color:'+color+'">'+rate+'%</span>'; }
 
   // ---- Tabs ----
-  document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>{
-    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  function activateTab(paneName){
+    document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.pane===paneName));
     document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById('pane-'+tab.dataset.pane).classList.add('active');
+    const pane=document.getElementById('pane-'+paneName);
+    if(pane) pane.classList.add('active');
+  }
+  document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>{
+    activateTab(tab.dataset.pane);
+    history.replaceState(null,'','?tab='+tab.dataset.pane);   // 刷新/分享后仍停留当前页签
   }));
+  // 支持 /?tab=stats 直达（顶部"报表入口"链接就指向这里）
+  const initialPane=new URLSearchParams(location.search).get('tab');
+  if(initialPane) activateTab(initialPane);
 
   // ---- Worker ----
   async function checkStatus(){
@@ -259,6 +267,27 @@
     try{ const d=await post('/web/start/');
       show(d.message,false,d.pids?'解释器：'+d.python+'\n进程 PID：'+d.pids.join(', '):undefined); await checkStatus();
     }catch(err){ show('启动失败：'+err.message,true,err.payload&&err.payload.log?err.payload.log:undefined); }
+    finally{ btn.disabled=false; }
+  };
+  document.getElementById('btn-diag').onclick=async()=>{
+    const btn=e=>e.currentTarget||e;
+    btn.disabled=true; show('正在采集环境信息…',false);
+    try{
+      const d=await requestJSON('/web/diagnose/');
+      const text=[
+        '解释器: '+d.python.executable+'  ('+d.python.version+')',
+        '工作目录: '+d.paths.cwd,
+        '项目根(BASE_DIR): '+d.paths.base_dir,
+        '日志目录存在: '+d.paths.log_dir_exists,
+        'DEBUG: '+d.django.debug+'  SETTINGS: '+d.django.settings_module,
+        '环境变量: '+(JSON.stringify(d.env_keys)||'无'),
+        'broker: '+d.celery.broker+'  连通: '+d.celery.redis_connectable+(d.celery.redis_error?(' ('+d.celery.redis_error+')'):''),
+        'workers: '+(d.celery.workers.join(', ')||'无'),
+        'worker-state: '+JSON.stringify(d.worker_state)+'  PID存活: '+d.pid_alive,
+        'worker.log: 存在='+d.worker_log.exists+' 大小='+d.worker_log.bytes+' 含ready='+d.worker_log.has_ready,
+      ].join('\n');
+      show('环境诊断完成（对比命令行/PyCharm 两种启动的结果即可定位差异）',false,text);
+    }catch(e){ show('诊断失败：'+e.message,true); }
     finally{ btn.disabled=false; }
   };
   document.getElementById('btn-logs').onclick=async()=>{

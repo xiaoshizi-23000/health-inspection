@@ -180,6 +180,72 @@ def worker_status(request):
     return JsonResponse({"online": bool(workers), "workers": sorted(workers)})
 
 
+@require_GET
+def diagnose(request):
+    """环境诊断：一眼看出"命令行启动正常、PyCharm 启动不正常"差在哪。
+
+    逐项列出解释器、工作目录、关键路径、环境变量与 worker 状态，
+    两种启动方式各点一次，差异立刻现形。
+    """
+    import json as _json
+
+    state = read_worker_state()
+    broker = getattr(settings, "CELERY_BROKER_URL", "")
+    redis_ok, redis_error = None, ""
+    try:
+        from kombu import Connection as KombuConnection
+
+        KombuConnection(broker).ensure_connection(max_retries=0, timeout=3)
+        redis_ok = True
+    except Exception as exc:  # 连不上也要把原因带回去
+        redis_ok = False
+        redis_error = f"{type(exc).__name__}: {exc}"
+
+    log_dir = Path(settings.BASE_DIR) / "logs"
+    return JsonResponse(
+        {
+            "ok": True,
+            "python": {
+                "executable": sys.executable,
+                "version": sys.version.split()[0],
+            },
+            "paths": {
+                "cwd": os.getcwd(),
+                "base_dir": str(settings.BASE_DIR),
+                "log_dir": str(log_dir),
+                "log_dir_exists": log_dir.exists(),
+            },
+            "django": {
+                "debug": settings.DEBUG,
+                "settings_module": os.environ.get("DJANGO_SETTINGS_MODULE", "(未设置)"),
+                "allowed_hosts": settings.ALLOWED_HOSTS,
+            },
+            "env_keys": {
+                key: os.environ.get(key, "")
+                for key in ("VIRTUAL_ENV", "PYTHONHOME", "PYTHONPATH", "PYTHONUNBUFFERED")
+                if os.environ.get(key)
+            },
+            "celery": {
+                "broker": broker,
+                "redis_connectable": redis_ok,
+                "redis_error": redis_error,
+                "workers": sorted(online_workers()),
+            },
+            "worker_state": state,
+            "state_file_exists": state_path().exists(),
+            "pid_alive": process_alive(state.get("pid")) if state.get("pid") else None,
+            "worker_log": {
+                "exists": (log_dir / "worker.log").exists(),
+                "bytes": (log_dir / "worker.log").stat().st_size
+                if (log_dir / "worker.log").exists()
+                else 0,
+                "has_ready": worker_ready_in_log(),
+                "tail": log_tail("worker.log", limit=10),
+            },
+        }
+    )
+
+
 def find_python() -> str:
     """挑一个真正能跑起 Celery 的解释器——不是"import 成功"就算数。
 
@@ -270,10 +336,18 @@ def start_worker(request):
     log_dir.mkdir(exist_ok=True)
 
     kwargs = {"cwd": Path(settings.BASE_DIR)}
+    flags_priority = []
     if os.name == "nt":
-        # 脱离父进程 + 不弹窗：即使启动它的终端/PyCharm 会话结束，worker 也不被回收。
-        # 输出重定向到日志文件，"闪退"也能看到原因。
-        kwargs["creationflags"] = (
+        # 首选：DETACHED + BREAKAWAY——脱离 PyCharm 的 Job Object，
+        # 这样 PyCharm 点 Stop / 代码重载时不会把 worker 连带杀掉
+        #（这就是"命令行启动正常、PyCharm 启动后 worker 消失"的根因）。
+        flags_priority.append(
+            subprocess.DETACHED_PROCESS
+            | subprocess.CREATE_NEW_PROCESS_GROUP
+            | subprocess.CREATE_BREAKAWAY_FROM_JOB
+        )
+        # 降级：Job 不允许 breakaway 时（WinError 5），退回普通 DETACHED
+        flags_priority.append(
             subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
         )
     for name in ("worker.log", "beat.log"):
@@ -294,15 +368,28 @@ def start_worker(request):
         ("beat.log", [python, "-m", "celery", "-A", "config", "beat", "-l", "info"]),
     ]
     pids = []
+    breakaway_used = False
     for log_name, command in commands:
-        try:
-            with (log_dir / log_name).open("ab") as handle:
-                process = subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT, **kwargs)
-            pids.append(process.pid)
-            if log_name == "worker.log":
-                write_worker_state(process.pid, nodename)
-        except OSError as exc:
-            return JsonResponse({"ok": False, "error": f"启动失败：{exc}"}, status=500)
+        launched = None
+        for flags in flags_priority:
+            try:
+                with (log_dir / log_name).open("ab") as handle:
+                    launched = subprocess.Popen(
+                        command, stdout=handle, stderr=subprocess.STDOUT,
+                        creationflags=flags, **{k: v for k, v in kwargs.items() if k != "creationflags"},
+                    )
+                if "BREAKAWAY" in str(flags) or (flags & getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)):
+                    breakaway_used = True
+                break
+            except OSError as exc:
+                if "拒绝访问" in str(exc) or exc.winerror == 5:
+                    continue  # Job 不允许 breakaway，降级重试
+                return JsonResponse({"ok": False, "error": f"启动失败：{exc}"}, status=500)
+        if launched is None:
+            return JsonResponse({"ok": False, "error": "所有启动方式都被拒绝"}, status=500)
+        pids.append(launched.pid)
+        if log_name == "worker.log":
+            write_worker_state(launched.pid, nodename)
 
     # 最多等 12 秒：以「日志出现 ready 且进程还活着」为准，不依赖 inspect 广播
     for _ in range(12):

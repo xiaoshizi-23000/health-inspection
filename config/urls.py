@@ -13,6 +13,7 @@ urlpatterns = [
     path("web/status/", web.worker_status, name="worker-status"),
     path("web/start/", web.start_worker, name="start-worker"),
     path("web/logs/", web.worker_logs, name="worker-logs"),
+    path("web/diagnose/", web.diagnose, name="web-diagnose"),
 
     # 控制台：CRUD 与查询
     path("web/services/", web_api.service_list, name="web-services"),
