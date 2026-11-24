@@ -61,10 +61,10 @@
     .modal-mask { display:none; position:fixed; inset:0; background:rgba(20,28,40,.42); z-index:50;
       align-items:center; justify-content:center; }
     .modal-mask.show { display:flex; }
-    .modal { background:var(--surface); border-radius:10px; padding:22px 24px; width:460px; max-width:92vw; }
+    .modal { background:var(--surface); border-radius:10px; padding:22px 24px; width:480px; max-width:92vw; max-height:86vh; overflow-y:auto; }
     .modal h3 { margin:0 0 16px; font-size:16px; font-weight:600; }
     .field { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
-    .field label { width:110px; text-align:right; color:var(--muted); font-size:13px; flex-shrink:0; }
+    .field label { width:112px; text-align:right; color:var(--muted); font-size:12px; line-height:1.4; flex-shrink:0; }
     .field input, .field select { flex:1; }
     .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
     .pager { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; color:var(--muted); }
@@ -335,7 +335,8 @@
       '<div class="field"><label>'+esc(f.label)+'</label>'+
       (f.type==='select'
         ? '<select data-key="'+f.key+'">'+f.options.map(o=>'<option value="'+esc(o.v)+'"'+(String(o.v)===String(f.value)?' selected':'')+'>'+esc(o.t)+'</option>').join('')+'</select>'
-        : '<input type="'+f.type+'" data-key="'+f.key+'" value="'+esc(f.value)+'"></div>')
+        : '<input type="'+f.type+'" data-key="'+f.key+'" value="'+esc(f.value)+'">')
+      +'</div>'
     ).join('');
     document.getElementById('modal-mask').classList.add('show');
   }
