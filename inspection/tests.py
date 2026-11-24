@@ -311,6 +311,7 @@ class DashboardTests(TestCase):
              mock.patch("inspection.web.subprocess.run") as check, \
              mock.patch("inspection.web.subprocess.Popen") as popen, \
              mock.patch("inspection.web.online_workers", return_value={}), \
+             mock.patch("inspection.web.read_worker_state", side_effect=[{}, {"pid": 12345}]), \
              mock.patch("inspection.web.worker_ready_in_log", return_value=True), \
              mock.patch("inspection.web.process_alive", return_value=True):
             check.return_value.returncode = 0

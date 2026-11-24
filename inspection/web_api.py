@@ -326,7 +326,9 @@ def stats_by_date(request):
             .first()
         )
     if stat_date is None:
-        return JsonResponse({"ok": True, "stat_date": None, "services": [], "summary": []})
+        return JsonResponse(
+            {"ok": True, "stat_date": None, "dates": [], "services": [], "summary": []}
+        )
 
     rows = (
         DailyHealthStat.objects.filter(stat_date=stat_date)

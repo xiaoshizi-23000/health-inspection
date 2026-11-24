@@ -256,8 +256,14 @@ def start_worker(request):
     if not settings.DEBUG:
         return JsonResponse({"ok": False, "error": "仅开发环境允许启动后台服务"}, status=403)
 
-    if online_workers():
-        return JsonResponse({"ok": True, "already": True, "message": "后台服务已在线，无需重复启动"})
+    # 双重检查：inspect + 状态文件里的 PID 存活，防止重复启动堆积多个 worker
+    state = read_worker_state()
+    if online_workers() or (
+        state.get("pid") and process_alive(state["pid"]) and worker_ready_in_log()
+    ):
+        return JsonResponse(
+            {"ok": True, "already": True, "message": "后台服务已在线，无需重复启动"}
+        )
 
     python = find_python()
     log_dir = Path(settings.BASE_DIR) / "logs"

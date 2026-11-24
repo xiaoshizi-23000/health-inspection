@@ -250,7 +250,10 @@
       return data.online;
     }catch(e){ badge.textContent='检测失败'; badge.style.color='var(--bad)'; return false; }
   }
-  document.getElementById('btn-status').onclick=checkStatus;
+  document.getElementById('btn-status').onclick=async()=>{
+    const ok=await checkStatus();
+    show(ok?'已检查：后台 worker 在线':'已检查：后台服务未启动（任务会自动同步执行）',!ok);
+  };
   document.getElementById('btn-start').onclick=async(e)=>{
     const btn=e.currentTarget; btn.disabled=true; show('正在启动并等待就绪，最多 12 秒…',false);
     try{ const d=await post('/web/start/');
@@ -453,8 +456,21 @@
     }
   });
 
-  // 初始加载
-  Promise.all([loadServices(),loadChecks(),loadStats(),loadOrg()]).catch(e=>show('加载数据失败：'+e.message,true));
+  // 初始加载：每个模块独立容错，任一接口失败不影响其它模块和按钮
+  async function safeLoad(name, fn){
+    try{ await fn(); }
+    catch(e){ console.error(name+' 加载失败', e);
+      const p=document.getElementById('pane-'+(name==='loadServices'?'services':name==='loadChecks'?'checks':name==='loadStats'?'stats':'org'));
+      if(p && !p.querySelector('.load-error')){
+        const d=document.createElement('div'); d.className='bad load-error';
+        d.textContent='数据加载失败（'+e.message+'），请刷新页面重试'; p.appendChild(d);
+      }
+    }
+  }
+  safeLoad('loadServices',loadServices);
+  safeLoad('loadChecks',loadChecks);
+  safeLoad('loadStats',loadStats);
+  safeLoad('loadOrg',loadOrg);
 </script>
 </body>
 </html>
