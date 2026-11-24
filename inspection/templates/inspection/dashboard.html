@@ -92,6 +92,12 @@
 
   <section>
     <h2>快捷操作</h2>
+    <div class="row" style="margin-bottom:10px">
+      <span class="muted" style="font-size:12px">后台服务</span>
+      <span id="worker-badge" class="tag">检测中…</span>
+      <button id="btn-status" style="padding:4px 10px;font-size:12px">检查状态</button>
+      <button id="btn-start" class="primary" style="padding:4px 10px;font-size:12px">一键启动后台服务</button>
+    </div>
     <div class="row">
       <button class="primary" data-task="inspect">立即全量巡检</button>
       <button data-task="rotate">轮换全部 Token</button>
@@ -158,8 +164,17 @@
 </div>
 
 <script>
-  const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
   const resultBox = document.getElementById('result');
+  const badge = document.getElementById('worker-badge');
+
+  // Django 把 csrftoken 写在 cookie 里；每次请求都重新读，页面放久了也不会因 token 轮转而 403
+  function cookie(name) {
+    const found = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return found ? decodeURIComponent(found.pop()) : '';
+  }
+  function csrfToken() {
+    return cookie('csrftoken') || document.querySelector('[name=csrfmiddlewaretoken]').value;
+  }
 
   function show(message, isError, detail) {
     resultBox.style.display = 'block';
@@ -172,28 +187,69 @@
     }
   }
 
-  async function post(url, body) {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
-      body: JSON.stringify(body || {})
-    });
+  async function requestJSON(url, options) {
+    const response = await fetch(url, options);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      // 服务端返回了 HTML（多为 403 CSRF / 404 / 500 调试页），不要把 '<!DOCTYPE' 塞给 JSON 解析
+      const html = await response.text();
+      const hint = html.includes('CSRF') ? 'CSRF 校验失败，请刷新页面后重试' : '服务端返回了非 JSON 响应';
+      throw new Error('HTTP ' + response.status + '：' + hint);
+    }
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || data.detail || '请求失败');
+    if (!response.ok) throw new Error(data.error || data.detail || 'HTTP ' + response.status);
     return data;
   }
+
+  function post(url, body) {
+    return requestJSON(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken()},
+      body: JSON.stringify(body || {})
+    });
+  }
+
+  async function checkStatus() {
+    try {
+      const data = await requestJSON('/web/status/');
+      badge.textContent = data.online ? '在线 · ' + data.workers.length + ' 个 worker' : '未启动（任务将同步执行）';
+      badge.style.color = data.online ? 'var(--ok)' : 'var(--warn)';
+      return data.online;
+    } catch (e) {
+      badge.textContent = '检测失败';
+      badge.style.color = 'var(--bad)';
+      return false;
+    }
+  }
+
+  document.getElementById('btn-status').addEventListener('click', () => checkStatus());
+  document.getElementById('btn-start').addEventListener('click', async (event) => {
+    const btn = event.currentTarget;
+    btn.disabled = true;
+    try {
+      const data = await post('/web/start/');
+      show(data.message, false, data.pids ? '进程 PID：' + data.pids.join(', ') : undefined);
+      await checkStatus();
+    } catch (e) {
+      show('启动失败：' + e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   async function run(button, action) {
     button.disabled = true;
     try {
       const data = await post('/web/task/' + action + '/');
-      show(data.message + '  任务 ID：' + data.task_id, false);
+      show(data.message, false, data.task_id ? '任务 ID：' + data.task_id : JSON.stringify(data.result));
     } catch (e) {
-      show('提交失败：' + e.message + '（请确认 Celery worker 已启动）', true);
+      show('执行失败：' + e.message, true);
     } finally {
       button.disabled = false;
     }
   }
+
+  checkStatus();
 
   document.querySelectorAll('[data-task]').forEach(btn => {
     btn.addEventListener('click', () => run(btn, btn.dataset.task));

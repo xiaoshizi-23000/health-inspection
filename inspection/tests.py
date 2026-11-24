@@ -8,7 +8,7 @@
 from datetime import datetime, timedelta
 from unittest import mock
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -273,13 +273,47 @@ class DashboardTests(TestCase):
 
     def test_trigger_task_uses_whitelist(self):
         fake = mock.Mock(id="task-123")
-        with mock.patch("inspection.web.tasks.inspect_all_services.delay", return_value=fake) as call:
+        with mock.patch("inspection.web.online_workers", return_value={"w1": {}}), \
+             mock.patch("inspection.web.tasks.inspect_all_services.delay", return_value=fake) as call:
             response = self.client.post("/web/task/inspect/")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["ok"])
         self.assertEqual(response.json()["task_id"], "task-123")
+        self.assertEqual(response.json()["mode"], "async")
         call.assert_called_once_with()
 
         bad = self.client.post("/web/task/delete_everything/")
         self.assertEqual(bad.status_code, 400)
         self.assertFalse(bad.json()["ok"])
+
+    def test_trigger_task_sync_fallback_without_worker(self):
+        """worker 没启动也要有反馈：直接在当前进程执行任务。"""
+        eager = mock.Mock(result={"checked": 9, "ok": 7, "failed": 2})
+        with mock.patch("inspection.web.online_workers", return_value={}), \
+             mock.patch("inspection.web.tasks.inspect_all_services.apply", return_value=eager):
+            response = self.client.post("/web/task/inspect/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["mode"], "sync")
+        self.assertEqual(body["result"], {"checked": 9, "ok": 7, "failed": 2})
+
+    def test_worker_status_endpoint(self):
+        with mock.patch("inspection.web.online_workers", return_value={"w1@host": {}}):
+            response = self.client.get("/web/status/")
+        self.assertTrue(response.json()["online"])
+        self.assertEqual(response.json()["workers"], ["w1@host"])
+
+    @override_settings(DEBUG=True)
+    def test_start_worker_launches_both_processes(self):
+        with mock.patch("inspection.web.online_workers", return_value={}), \
+             mock.patch("inspection.web.subprocess.Popen") as popen:
+            popen.return_value.pid = 12345
+            response = self.client.post("/web/start/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+        self.assertEqual(popen.call_count, 2)
+
+    @override_settings(DEBUG=False)
+    def test_start_worker_forbidden_in_production(self):
+        response = self.client.post("/web/start/")
+        self.assertEqual(response.status_code, 403)

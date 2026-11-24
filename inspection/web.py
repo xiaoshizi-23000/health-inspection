@@ -6,6 +6,13 @@ Dashboard 是给运维/开发看的"系统门面"：一屏之内能看到当前�
 """
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from celery import current_app
+from django.conf import settings
 from django.db.models import Count, Sum
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -18,17 +25,25 @@ from .models import DailyHealthStat, HealthCheckLog, Service
 TASK_ACTIONS = {
     "inspect": (
         tasks.inspect_all_services,
-        "全量巡检已提交，worker 执行后可在「最近巡检」看到新记录。",
+        "全量巡检完成，可在「最近巡检」看到新记录。",
     ),
     "rotate": (
         tasks.rotate_service_tokens,
-        "Token 轮换已提交，轮换完成后旧 Token 仍有 10 分钟宽限期。",
+        "Token 轮换完成，旧 Token 仍有 10 分钟宽限期。",
     ),
     "stat": (
         tasks.daily_health_stat,
-        "昨日统计重算已提交，结果以最新一次计算为准（幂等）。",
+        "昨日统计重算完成，结果以最新一次计算为准（幂等）。",
     ),
 }
+
+
+def online_workers() -> dict:
+    """通过 Celery inspect 问一圈：现在有哪些 worker 在线。"""
+    try:
+        return current_app.control.inspect(timeout=1).ping() or {}
+    except Exception:  # broker 连不上 / 没有 worker
+        return {}
 
 
 @require_GET
@@ -103,13 +118,76 @@ def dashboard(request):
     return render(request, "inspection/dashboard.html", context)
 
 
+@require_GET
+def worker_status(request):
+    """首页显示 worker 是否在线，避免用户对着按钮干等。"""
+    workers = online_workers()
+    return JsonResponse({"online": bool(workers), "workers": sorted(workers)})
+
+
+@require_POST
+def start_worker(request):
+    """一键拉起 worker + beat（仅 DEBUG 下可用）。
+
+    生产环境进程由 systemd / supervisord / 容器编排管理，
+    绝不能让 Web 请求去 fork 后台进程——这里只是本地演示的便利入口。
+    """
+    if not settings.DEBUG:
+        return JsonResponse({"ok": False, "error": "仅开发环境允许启动后台服务"}, status=403)
+
+    if online_workers():
+        return JsonResponse({"ok": True, "already": True, "message": "后台服务已在线，无需重复启动"})
+
+    kwargs = {"cwd": Path(settings.BASE_DIR)}
+    if os.name == "nt":
+        kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE  # Windows 上弹新窗口，能看到日志
+
+    commands = [
+        [sys.executable, "-m", "celery", "-A", "config", "worker", "-l", "info", "--pool=solo"],
+        [sys.executable, "-m", "celery", "-A", "config", "beat", "-l", "info"],
+    ]
+    pids = []
+    for command in commands:
+        try:
+            process = subprocess.Popen(command, **kwargs)
+            pids.append(process.pid)
+        except OSError as exc:
+            return JsonResponse({"ok": False, "error": f"启动失败：{exc}"}, status=500)
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "pids": pids,
+            "message": "已拉起 worker 和 beat（见新窗口）。稍等几秒后点「检查状态」确认。",
+        }
+    )
+
+
 @require_POST
 def trigger_task(request, action: str):
-    """把任务提交给 Celery。白名单映射，避免任意任务名被调用。"""
+    """执行任务：worker 在线则异步投递，离线则在当前进程同步执行。
+
+    演示场景下按钮必须有反馈——不能因为忘了开 worker 就卡住或报错。
+    """
     config = TASK_ACTIONS.get(action)
     if config is None:
         return JsonResponse({"ok": False, "error": "未知操作"}, status=400)
 
     task, message = config
-    result = task.delay()
-    return JsonResponse({"ok": True, "task_id": result.id, "message": message})
+
+    if online_workers():
+        result = task.delay()
+        return JsonResponse(
+            {"ok": True, "mode": "async", "task_id": result.id, "message": message + "（异步）"}
+        )
+
+    # worker 不在：同步跑一遍，结果直接回显
+    outcome = task.apply()
+    return JsonResponse(
+        {
+            "ok": True,
+            "mode": "sync",
+            "result": outcome.result,
+            "message": message + "（同步执行：后台 worker 未启动，本次直接在 Web 进程完成）",
+        }
+    )
