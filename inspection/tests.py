@@ -5,6 +5,7 @@
 2. 统计链路：条件聚合的正确性、零流量服务的补行、幂等重跑；
 3. 接口链路：手动探测落库、新建服务自动签发 Token、中间件响应头。
 """
+import sys
 from datetime import datetime, timedelta
 from unittest import mock
 
@@ -305,8 +306,12 @@ class DashboardTests(TestCase):
 
     @override_settings(DEBUG=True)
     def test_start_worker_launches_both_processes(self):
-        with mock.patch("inspection.web.online_workers", return_value={}), \
-             mock.patch("inspection.web.subprocess.Popen") as popen:
+        # 探测器认为 worker 在线：第一次检查 ready 后立刻返回，不用真等 12 秒
+        with mock.patch("inspection.web.find_python", return_value=sys.executable), \
+             mock.patch("inspection.web.subprocess.run") as check, \
+             mock.patch("inspection.web.subprocess.Popen") as popen, \
+             mock.patch("inspection.web.online_workers", side_effect=[{}, {"w1": {}}]):
+            check.return_value.returncode = 0
             popen.return_value.pid = 12345
             response = self.client.post("/web/start/")
         self.assertEqual(response.status_code, 200)
@@ -317,3 +322,9 @@ class DashboardTests(TestCase):
     def test_start_worker_forbidden_in_production(self):
         response = self.client.post("/web/start/")
         self.assertEqual(response.status_code, 403)
+
+    def test_worker_logs_endpoint(self):
+        response = self.client.get("/web/logs/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("worker", response.json())
+        self.assertIn("beat", response.json())

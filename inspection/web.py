@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from celery import current_app
@@ -125,6 +126,41 @@ def worker_status(request):
     return JsonResponse({"online": bool(workers), "workers": sorted(workers)})
 
 
+def find_python() -> str:
+    """挑一个真正装了 Django + Celery 的解释器。
+
+    关键点：不能直接用 sys.executable——如果 Web 进程是 PyCharm 用 3.13 起的，
+    而依赖装在 3.12，弹出的 cmd 就会 ModuleNotFoundError 然后瞬间闪退。
+    """
+    candidates = [
+        sys.executable,
+        getattr(settings, "PYTHON_EXECUTABLE", ""),
+        r"C:\Users\23000\AppData\Local\Programs\Python\Python312\python.exe",
+    ]
+    for candidate in candidates:
+        if not candidate or not Path(candidate).exists():
+            continue
+        try:
+            check = subprocess.run(
+                [candidate, "-c", "import django, celery, rest_framework"],
+                capture_output=True,
+                timeout=10,
+            )
+            if check.returncode == 0:
+                return candidate
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return sys.executable  # 都不行就交给你自己的解释器，至少日志能说明原因
+
+
+def log_tail(name: str, limit: int = 30) -> str:
+    path = Path(settings.BASE_DIR) / "logs" / name
+    if not path.exists():
+        return ""
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    return "\n".join(lines[-limit:])
+
+
 @require_POST
 def start_worker(request):
     """一键拉起 worker + beat（仅 DEBUG 下可用）。
@@ -138,27 +174,64 @@ def start_worker(request):
     if online_workers():
         return JsonResponse({"ok": True, "already": True, "message": "后台服务已在线，无需重复启动"})
 
+    python = find_python()
+    log_dir = Path(settings.BASE_DIR) / "logs"
+    log_dir.mkdir(exist_ok=True)
+
     kwargs = {"cwd": Path(settings.BASE_DIR)}
     if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NEW_CONSOLE  # Windows 上弹新窗口，能看到日志
+        # 脱离父进程 + 不弹窗：即使启动它的终端/PyCharm 会话结束，worker 也不被回收。
+        # 输出重定向到日志文件，"闪退"也能看到原因。
+        kwargs["creationflags"] = (
+            subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        )
+    for name in ("worker.log", "beat.log"):
+        (log_dir / name).write_text("", encoding="utf-8")
 
     commands = [
-        [sys.executable, "-m", "celery", "-A", "config", "worker", "-l", "info", "--pool=solo"],
-        [sys.executable, "-m", "celery", "-A", "config", "beat", "-l", "info"],
+        ("worker.log", [python, "-m", "celery", "-A", "config", "worker", "-l", "info", "--pool=solo"]),
+        ("beat.log", [python, "-m", "celery", "-A", "config", "beat", "-l", "info"]),
     ]
     pids = []
-    for command in commands:
+    for log_name, command in commands:
         try:
-            process = subprocess.Popen(command, **kwargs)
+            with (log_dir / log_name).open("ab") as handle:
+                process = subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT, **kwargs)
             pids.append(process.pid)
         except OSError as exc:
             return JsonResponse({"ok": False, "error": f"启动失败：{exc}"}, status=500)
 
+    # 最多等 12 秒，确认 worker 真的 ready，而不是"启动了就当成功"
+    for _ in range(12):
+        if online_workers():
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "pids": pids,
+                    "python": python,
+                    "message": "后台服务已启动并就绪。",
+                }
+            )
+        time.sleep(1)
+
     return JsonResponse(
         {
-            "ok": True,
-            "pids": pids,
-            "message": "已拉起 worker 和 beat（见新窗口）。稍等几秒后点「检查状态」确认。",
+            "ok": False,
+            "error": "进程已拉起但 12 秒内未就绪，通常是解释器缺依赖。请把下面的日志发给排查：",
+            "python": python,
+            "log": log_tail("worker.log") + "\n---- beat ----\n" + log_tail("beat.log"),
+        },
+        status=500,
+    )
+
+
+@require_GET
+def worker_logs(request):
+    """首页「查看日志」按钮：直接读两个日志文件，排障不用开黑窗口。"""
+    return JsonResponse(
+        {
+            "worker": log_tail("worker.log"),
+            "beat": log_tail("beat.log"),
         }
     )
 

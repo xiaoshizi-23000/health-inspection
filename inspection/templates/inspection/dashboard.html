@@ -97,6 +97,7 @@
       <span id="worker-badge" class="tag">检测中…</span>
       <button id="btn-status" style="padding:4px 10px;font-size:12px">检查状态</button>
       <button id="btn-start" class="primary" style="padding:4px 10px;font-size:12px">一键启动后台服务</button>
+      <button id="btn-logs" style="padding:4px 10px;font-size:12px">查看启动日志</button>
     </div>
     <div class="row">
       <button class="primary" data-task="inspect">立即全量巡检</button>
@@ -197,7 +198,11 @@
       throw new Error('HTTP ' + response.status + '：' + hint);
     }
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || data.detail || 'HTTP ' + response.status);
+    if (!response.ok) {
+      const err = new Error(data.error || data.detail || 'HTTP ' + response.status);
+      err.payload = data;
+      throw err;
+    }
     return data;
   }
 
@@ -226,14 +231,25 @@
   document.getElementById('btn-start').addEventListener('click', async (event) => {
     const btn = event.currentTarget;
     btn.disabled = true;
+    show('正在启动并等待就绪，最多 12 秒…', false);
     try {
       const data = await post('/web/start/');
-      show(data.message, false, data.pids ? '进程 PID：' + data.pids.join(', ') : undefined);
+      show(data.message, false, '解释器：' + data.python + '\n进程 PID：' + data.pids.join(', '));
       await checkStatus();
     } catch (e) {
-      show('启动失败：' + e.message, true);
+      show('启动失败：' + e.message, true, e.payload && e.payload.log ? e.payload.log : undefined);
     } finally {
       btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btn-logs').addEventListener('click', async () => {
+    try {
+      const data = await requestJSON('/web/logs/');
+      show('worker.log / beat.log 最新内容', !data.worker && !data.beat,
+           '---- worker ----\n' + (data.worker || '(空)') + '\n\n---- beat ----\n' + (data.beat || '(空)'));
+    } catch (e) {
+      show('读取日志失败：' + e.message, true);
     }
   });
 
