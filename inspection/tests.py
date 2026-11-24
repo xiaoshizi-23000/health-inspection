@@ -306,16 +306,19 @@ class DashboardTests(TestCase):
 
     @override_settings(DEBUG=True)
     def test_start_worker_launches_both_processes(self):
-        # 探测器认为 worker 在线：第一次检查 ready 后立刻返回，不用真等 12 秒
+        # 成功判定：日志有 ready + 记录的 PID 存活，不再依赖 inspect 广播
         with mock.patch("inspection.web.find_python", return_value=sys.executable), \
              mock.patch("inspection.web.subprocess.run") as check, \
              mock.patch("inspection.web.subprocess.Popen") as popen, \
-             mock.patch("inspection.web.online_workers", side_effect=[{}, {"w1": {}}]):
+             mock.patch("inspection.web.online_workers", return_value={}), \
+             mock.patch("inspection.web.worker_ready_in_log", return_value=True), \
+             mock.patch("inspection.web.process_alive", return_value=True):
             check.return_value.returncode = 0
             popen.return_value.pid = 12345
             response = self.client.post("/web/start/")
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["ok"])
+        self.assertIn("nodename", response.json())
         self.assertEqual(popen.call_count, 2)
 
     @override_settings(DEBUG=False)

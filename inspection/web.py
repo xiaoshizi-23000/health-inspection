@@ -39,12 +39,64 @@ TASK_ACTIONS = {
 }
 
 
-def online_workers() -> dict:
-    """通过 Celery inspect 问一圈：现在有哪些 worker 在线。"""
+def worker_ready_in_log() -> bool:
+    """看 worker.log 里有没有 ready 标记——比 inspect 广播可靠。
+
+    inspect().ping() 在机器上有多个同名 worker（DuplicateNodenameWarning）时
+    会行为异常，明明 worker 活着却返回空，导致误判"启动失败"。
+    """
+    content = log_tail("worker.log", limit=200)
+    return " ready." in content or " ready " in content
+
+
+def process_alive(pid: int) -> bool:
+    """检查进程是否还活着。
+
+    Windows 上不用 tasklist：Git Bash 会把 /FI 当路径转换，且输出是 GBK，
+    用 text=True 解码会直接抛 UnicodeDecodeError。改用 Win32 API（纯 ctypes，无依赖）。
+    """
+    if not pid:
+        return False
+    if os.name == "nt":
+        import ctypes
+
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if not handle:
+            return False
+        try:
+            exit_code = ctypes.c_ulong()
+            ok = kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
+            # STILL_ACTIVE = 259
+            return bool(ok) and exit_code.value == 259
+        finally:
+            kernel32.CloseHandle(handle)
     try:
-        return current_app.control.inspect(timeout=1).ping() or {}
-    except Exception:  # broker 连不上 / 没有 worker
-        return {}
+        os.kill(pid, 0)  # signal 0 只探测不杀进程
+        return True
+    except OSError:
+        return False
+
+
+def online_workers() -> dict:
+    """判断 worker 是否在线。
+
+    优先用 inspect（能拿到节点名），但它不可靠时降级到"日志 + 进程"判断：
+    worker.log 里有 ready 且记录的 PID 还活着 → 视为在线。
+    """
+    try:
+        result = current_app.control.inspect(timeout=2).ping()
+        if result:
+            return result
+    except Exception:
+        pass
+
+    state = read_worker_state()
+    if state.get("pid") and state.get("log_ready") and process_alive(state["pid"]):
+        hostname = state.get("nodename", "worker")
+        return {hostname: {}}
+    return {}
 
 
 @require_GET
@@ -168,6 +220,30 @@ def log_tail(name: str, limit: int = 30) -> str:
     return "\n".join(lines[-limit:])
 
 
+def state_path() -> Path:
+    return Path(settings.BASE_DIR) / "logs" / "worker-state.json"
+
+
+def read_worker_state() -> dict:
+    import json
+
+    path = state_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+
+
+def write_worker_state(pid: int, nodename: str) -> None:
+    import json
+
+    state_path().write_text(
+        json.dumps({"pid": pid, "nodename": nodename}), encoding="utf-8"
+    )
+
+
 @require_POST
 def start_worker(request):
     """一键拉起 worker + beat（仅 DEBUG 下可用）。
@@ -195,8 +271,18 @@ def start_worker(request):
     for name in ("worker.log", "beat.log"):
         (log_dir / name).write_text("", encoding="utf-8")
 
+    # 唯一节点名：避免机器上残留多个 celery@HUAWEI-PC 导致 inspect 广播混乱
+    import uuid
+
+    nodename = f"inspect@{uuid.uuid4().hex[:8]}"
     commands = [
-        ("worker.log", [python, "-m", "celery", "-A", "config", "worker", "-l", "info", "--pool=solo"]),
+        (
+            "worker.log",
+            [
+                python, "-m", "celery", "-A", "config", "worker", "-l", "info",
+                "--pool=solo", "-n", nodename,
+            ],
+        ),
         ("beat.log", [python, "-m", "celery", "-A", "config", "beat", "-l", "info"]),
     ]
     pids = []
@@ -205,17 +291,25 @@ def start_worker(request):
             with (log_dir / log_name).open("ab") as handle:
                 process = subprocess.Popen(command, stdout=handle, stderr=subprocess.STDOUT, **kwargs)
             pids.append(process.pid)
+            if log_name == "worker.log":
+                write_worker_state(process.pid, nodename)
         except OSError as exc:
             return JsonResponse({"ok": False, "error": f"启动失败：{exc}"}, status=500)
 
-    # 最多等 12 秒，确认 worker 真的 ready，而不是"启动了就当成功"
+    # 最多等 12 秒：以「日志出现 ready 且进程还活着」为准，不依赖 inspect 广播
     for _ in range(12):
-        if online_workers():
+        state = read_worker_state()
+        if (
+            worker_ready_in_log()
+            and state.get("pid")
+            and process_alive(state["pid"])
+        ):
             return JsonResponse(
                 {
                     "ok": True,
                     "pids": pids,
                     "python": python,
+                    "nodename": nodename,
                     "message": "后台服务已启动并就绪。",
                 }
             )

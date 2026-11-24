@@ -10,3 +10,4 @@ venv/
 .vscode/
 .DS_Store
 celerybeat-schedule*
+logs/worker-state.json
