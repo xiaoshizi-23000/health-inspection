@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>服务健康巡检 · 运维控制台</title>
+  <style>
+    :root {
+      --ink: #1b2430;
+      --muted: #66748a;
+      --line: #e3e8ef;
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --accent: #2563a6;
+      --ok: #1d7a56;
+      --bad: #b53737;
+      --warn: #9a6a12;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 60px; }
+    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
+    h1 { font-size: 21px; font-weight: 600; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 13px; }
+    nav a { color: var(--accent); text-decoration: none; margin-left: 18px; font-size: 13px; }
+    nav a:hover { text-decoration: underline; }
+    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 26px; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+    .card .label { color: var(--muted); font-size: 12px; }
+    .card .value { font-size: 26px; font-weight: 600; margin-top: 6px; letter-spacing: .5px; }
+    .card .note { color: var(--muted); font-size: 12px; margin-top: 2px; }
+    section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 22px 24px; margin-bottom: 20px; }
+    h2 { font-size: 15px; font-weight: 600; margin: 0 0 16px; }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    button, select {
+      font: inherit;
+      padding: 8px 14px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    button:hover:not(:disabled) { border-color: var(--accent); }
+    button:disabled { opacity: .55; cursor: wait; }
+    select { min-width: 260px; cursor: default; }
+    .divider { height: 1px; background: var(--line); margin: 18px 0; }
+    #result { display: none; margin-top: 16px; padding: 12px 14px; border-radius: 6px; background: #eef5fb; border: 1px solid #d4e5f5; font-size: 13px; }
+    #result.error { background: #fdf0f0; border-color: #f0d0d0; }
+    #result code { display: block; margin-top: 8px; word-break: break-all; background: #fff; padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 500; font-size: 12px; }
+    tr:last-child td { border-bottom: none; }
+    .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
+    .muted { color: var(--muted); }
+    .tag { display: inline-block; padding: 1px 7px; border: 1px solid var(--line); border-radius: 10px; font-size: 11px; color: var(--muted); }
+    footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 28px; }
+    @media (max-width: 760px) { .cards { grid-template-columns: repeat(2, 1fr); } header { flex-direction: column; align-items: flex-start; } }
+  </style>
+</head>
+<body>
+{% csrf_token %}
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>服务健康巡检 · 运维控制台</h1>
+      <div class="sub">内部 HTTP 服务健康度管理 · 数据截至 {{ stat_date|default:"--" }}</div>
+    </div>
+    <nav>
+      <a href="/api/">API 文档</a>
+      <a href="/admin/">后台管理</a>
+    </nav>
+  </header>
+
+  <div class="cards">
+    <div class="card"><div class="label">纳管服务</div><div class="value">{{ service_total }}</div><div class="note">其中启用巡检 {{ service_enabled }}</div></div>
+    <div class="card"><div class="label">今日巡检</div><div class="value">{{ checks_today }}</div><div class="note">失败 {{ checks_failed_today }} 次</div></div>
+    <div class="card"><div class="label">昨日健康率</div><div class="value">{{ overall_rate }}%</div><div class="note">全部服务加权计算</div></div>
+    <div class="card"><div class="label">统计维度</div><div class="value">{{ summary|length }}</div><div class="note">环境 × 团队</div></div>
+  </div>
+
+  <section>
+    <h2>快捷操作</h2>
+    <div class="row">
+      <button class="primary" data-task="inspect">立即全量巡检</button>
+      <button data-task="rotate">轮换全部 Token</button>
+      <button data-task="stat">重算昨日统计</button>
+    </div>
+    <div class="divider"></div>
+    <div class="row">
+      <select id="service-select">
+        {% for s in services %}
+        <option value="{{ s.id }}">{{ s.name }} · {{ s.env__code }} · {{ s.team__name }} · {{ s.token_hint }}</option>
+        {% empty %}
+        <option value="">暂无服务，请先在后台或 API 创建</option>
+        {% endfor %}
+      </select>
+      <button id="btn-check" class="primary">手动体检</button>
+      <button id="btn-rotate">轮换该服务 Token</button>
+    </div>
+    <div id="result"></div>
+  </section>
+
+  <section>
+    <h2>环境 × 团队健康率 <span class="muted" style="font-size:12px;font-weight:400">（{{ stat_date|default:"暂无数据" }}）</span></h2>
+    <table>
+      <thead><tr><th>环境</th><th>团队</th><th>服务数</th><th>巡检次数</th><th>健康率</th></tr></thead>
+      <tbody>
+        {% for row in summary %}
+        <tr>
+          <td>{{ row.env }}</td>
+          <td>{{ row.team }}</td>
+          <td>{{ row.services }}</td>
+          <td class="muted">{{ row.total }}</td>
+          <td class="{% if row.health_rate >= 90 %}ok{% else %}bad{% endif %}">{{ row.health_rate }}%</td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="muted">暂无统计数据，可在上方点「重算昨日统计」</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>最近巡检</h2>
+    <table>
+      <thead><tr><th>时间</th><th>服务</th><th>环境</th><th>结果</th><th>状态码</th><th>耗时</th><th>触发</th></tr></thead>
+      <tbody>
+        {% for log in recent_logs %}
+        <tr>
+          <td class="muted">{{ log.created_at|date:"m-d H:i:s" }}</td>
+          <td>{{ log.service.name }}</td>
+          <td class="muted">{{ log.service.env.code }}</td>
+          <td class="{% if log.ok %}ok{% else %}bad{% endif %}">{% if log.ok %}健康{% else %}异常{% endif %}</td>
+          <td>{{ log.status_code|default:"-" }}</td>
+          <td>{{ log.latency_ms|default:"-" }} ms</td>
+          <td><span class="tag">{{ log.get_trigger_display }}</span></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7" class="muted">暂无巡检记录</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <footer>所有操作记录均保留在巡检明细与系统日志中 · 敏感 Token 仅以尾号展示</footer>
+</div>
+
+<script>
+  const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+  const resultBox = document.getElementById('result');
+
+  function show(message, isError, detail) {
+    resultBox.style.display = 'block';
+    resultBox.className = isError ? 'error' : '';
+    resultBox.textContent = message;
+    if (detail) {
+      const code = document.createElement('code');
+      code.textContent = detail;
+      resultBox.appendChild(code);
+    }
+  }
+
+  async function post(url, body) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrf},
+      body: JSON.stringify(body || {})
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || data.detail || '请求失败');
+    return data;
+  }
+
+  async function run(button, action) {
+    button.disabled = true;
+    try {
+      const data = await post('/web/task/' + action + '/');
+      show(data.message + '  任务 ID：' + data.task_id, false);
+    } catch (e) {
+      show('提交失败：' + e.message + '（请确认 Celery worker 已启动）', true);
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  document.querySelectorAll('[data-task]').forEach(btn => {
+    btn.addEventListener('click', () => run(btn, btn.dataset.task));
+  });
+
+  document.getElementById('btn-check').addEventListener('click', async (event) => {
+    const btn = event.currentTarget;
+    const id = document.getElementById('service-select').value;
+    if (!id) return show('请先选择一个服务', true);
+    btn.disabled = true;
+    try {
+      const data = await post('/api/services/' + id + '/check/');
+      const detail = data.ok
+        ? '状态码 ' + data.status_code + ' · 耗时 ' + data.latency_ms + ' ms · ' + data.health_url
+        : data.error + ' · ' + data.health_url;
+      show(data.ok ? '体检完成：该服务健康' : '体检完成：该服务异常', !data.ok, detail);
+    } catch (e) {
+      show('体检请求失败：' + e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById('btn-rotate').addEventListener('click', async (event) => {
+    const btn = event.currentTarget;
+    const id = document.getElementById('service-select').value;
+    if (!id) return show('请先选择一个服务', true);
+    btn.disabled = true;
+    try {
+      const data = await post('/api/services/' + id + '/rotate-token/');
+      show('轮换完成。明文仅显示这一次，请及时下发：', false, data.token);
+    } catch (e) {
+      show('轮换失败：' + e.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

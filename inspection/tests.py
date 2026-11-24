@@ -240,3 +240,46 @@ class ApiTests(TestCase):
             with self.subTest(url=url):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 200)
+
+
+class DashboardTests(TestCase):
+    def setUp(self):
+        self.env = Environment.objects.create(code="prod", name="生产")
+        self.team = Team.objects.create(name="基础架构")
+        self.service = Service.objects.create(
+            name="user-api", env=self.env, team=self.team, base_url="http://x"
+        )
+        HealthCheckLog.objects.create(
+            service=self.service, ok=True, status_code=200, latency_ms=10
+        )
+        DailyHealthStat.objects.create(
+            stat_date=timezone.localdate() - timedelta(days=1),
+            env=self.env,
+            team=self.team,
+            service=self.service,
+            total=10,
+            ok_count=9,
+            health_rate=90.0,
+        )
+
+    def test_dashboard_renders_overview(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode()
+        self.assertIn("运维控制台", content)
+        self.assertIn("user-api", content)
+        self.assertIn("X-CSRFToken", content)
+        self.assertIn("90.0%", content)
+
+    def test_trigger_task_uses_whitelist(self):
+        fake = mock.Mock(id="task-123")
+        with mock.patch("inspection.web.tasks.inspect_all_services.delay", return_value=fake) as call:
+            response = self.client.post("/web/task/inspect/")
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["ok"])
+        self.assertEqual(response.json()["task_id"], "task-123")
+        call.assert_called_once_with()
+
+        bad = self.client.post("/web/task/delete_everything/")
+        self.assertEqual(bad.status_code, 400)
+        self.assertFalse(bad.json()["ok"])

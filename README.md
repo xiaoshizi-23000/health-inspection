@@ -53,7 +53,9 @@ python -m celery -A config worker -l info --pool=solo         # Windows 下用 s
 python -m celery -A config beat -l info                       # 定时调度
 ```
 
-打开 <http://127.0.0.1:8000/api/> 即是 DRF 可浏览接口。
+打开 <http://127.0.0.1:8000/> 是运维控制台首页：一屏看服务数、今日巡检、昨日健康率，并提供全量巡检 / Token 轮换 / 统计重算 / 单服务体检等快捷操作（写操作走 POST + CSRF，任务提交给 Celery 异步执行）。
+
+打开 <http://127.0.0.1:8000/api/> 是 DRF 可浏览接口。
 
 ## API 一览
 
