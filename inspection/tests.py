@@ -336,6 +336,74 @@ class DashboardTests(TestCase):
         PYTHON_EXECUTABLE="",
         CELERY_BROKER_URL="redis://127.0.0.1:6379/0",
     )
+    def test_web_crud_full_flow(self):
+        """页面用的 CRUD 端点：建服务（带 Token）→ 改 → 停 → 删。"""
+        payload = {
+            "name": "crud-api", "env": self.env.pk, "team": self.team.pk,
+            "base_url": "http://127.0.0.1:8000/", "health_path": "ping/",
+            "timeout_seconds": 2.5,
+        }
+        created = self.client.post(
+            "/web/services/create/", payload, content_type="application/json"
+        ).json()
+        self.assertTrue(created["ok"])
+        self.assertEqual(len(created["token"]), 43)
+
+        sid = created["id"]
+        svc = Service.objects.get(pk=sid)
+        self.assertEqual(svc.health_path, "/ping/")
+        self.assertEqual(crypto.decrypt(svc.token_cipher), created["token"])
+
+        updated = self.client.post(
+            f"/web/services/{sid}/update/", {"name": "crud-api-v2", "enabled": False},
+            content_type="application/json",
+        ).json()
+        self.assertTrue(updated["ok"])
+        svc.refresh_from_db()
+        self.assertEqual(svc.name, "crud-api-v2")
+        self.assertFalse(svc.enabled)
+
+        toggled = self.client.post(f"/web/services/{sid}/toggle/", content_type="application/json").json()
+        self.assertTrue(toggled["enabled"])
+
+        listed = self.client.get("/web/services/?q=crud").json()
+        self.assertEqual(listed["count"], 1)
+        self.assertEqual(listed["results"][0]["token_hint"], created["token"][-4:])
+
+        deleted = self.client.post(f"/web/services/{sid}/delete/", content_type="application/json").json()
+        self.assertTrue(deleted["ok"])
+        self.assertFalse(Service.objects.filter(pk=sid).exists())
+
+    def test_web_org_and_query_endpoints(self):
+        team = self.client.post(
+            "/web/teams/save/", {"name": "新团队", "owner": "张三"},
+            content_type="application/json",
+        ).json()
+        self.assertTrue(team["ok"])
+        # 重名拒绝
+        dup = self.client.post(
+            "/web/teams/save/", {"name": "新团队"}, content_type="application/json"
+        )
+        self.assertEqual(dup.status_code, 400)
+
+        env = self.client.post(
+            "/web/environments/save/", {"code": "test", "name": "测试", "sort_order": 2},
+            content_type="application/json",
+        ).json()
+        self.assertTrue(env["ok"])
+        teams = self.client.get("/web/teams/").json()["results"]
+        new_team = next(t for t in teams if t["name"] == "新团队")
+        self.assertEqual(new_team["service_count"], 0)
+        self.assertEqual(self.client.get("/web/environments/").json()["ok"], True)
+
+        checks = self.client.get("/web/checks/?ok=1&page=1").json()
+        self.assertIn("pages", checks)
+        self.assertTrue(all(r["ok"] for r in checks["results"]))
+
+        stats = self.client.get("/web/stats/").json()
+        self.assertIn("dates", stats)
+        self.assertIn("summary", stats)
+
     def test_find_python_skips_broken_interpreter(self):
         """3.13 能 import 但 kombu 连不上 broker（redis-py 版本低），必须被跳过。"""
         from inspection.web import find_python

@@ -6,303 +6,455 @@
   <title>服务健康巡检 · 运维控制台</title>
   <style>
     :root {
-      --ink: #1b2430;
-      --muted: #66748a;
-      --line: #e3e8ef;
-      --bg: #f5f7fa;
-      --surface: #ffffff;
-      --accent: #2563a6;
-      --ok: #1d7a56;
-      --bad: #b53737;
-      --warn: #9a6a12;
+      --ink: #1b2430; --muted: #66748a; --line: #e3e8ef;
+      --bg: #f5f7fa; --surface: #ffffff; --accent: #2563a6;
+      --ok: #1d7a56; --bad: #b53737; --warn: #9a6a12;
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--ink);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
-      font-size: 14px;
-      line-height: 1.6;
+    body { margin:0; background:var(--bg); color:var(--ink);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif;
+      font-size:14px; line-height:1.6; }
+    .wrap { max-width:1120px; margin:0 auto; padding:28px 24px 60px; }
+    header { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:24px; }
+    h1 { font-size:21px; font-weight:600; margin:0 0 4px; }
+    h2 { font-size:15px; font-weight:600; margin:0 0 14px; }
+    .sub { color:var(--muted); font-size:13px; }
+    nav a { color:var(--accent); text-decoration:none; margin-left:16px; font-size:13px; }
+    nav a:hover { text-decoration:underline; }
+    .cards { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px; }
+    .card { background:var(--surface); border:0.5px solid var(--line); border-radius:10px; padding:16px 18px; }
+    .card .label { color:var(--muted); font-size:12px; }
+    .card .value { font-size:24px; font-weight:600; margin-top:4px; }
+    .card .note { color:var(--muted); font-size:12px; margin-top:2px; }
+    section { background:var(--surface); border:0.5px solid var(--line); border-radius:10px; padding:20px 22px; margin-bottom:18px; }
+    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    .between { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+    button, select, input {
+      font:inherit; padding:7px 12px; border:0.5px solid var(--line);
+      border-radius:6px; background:var(--surface); color:var(--ink);
     }
-    .wrap { max-width: 1080px; margin: 0 auto; padding: 32px 24px 60px; }
-    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
-    h1 { font-size: 21px; font-weight: 600; margin: 0 0 4px; }
-    .sub { color: var(--muted); font-size: 13px; }
-    nav a { color: var(--accent); text-decoration: none; margin-left: 18px; font-size: 13px; }
-    nav a:hover { text-decoration: underline; }
-    .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 26px; }
-    .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
-    .card .label { color: var(--muted); font-size: 12px; }
-    .card .value { font-size: 26px; font-weight: 600; margin-top: 6px; letter-spacing: .5px; }
-    .card .note { color: var(--muted); font-size: 12px; margin-top: 2px; }
-    section { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 22px 24px; margin-bottom: 20px; }
-    h2 { font-size: 15px; font-weight: 600; margin: 0 0 16px; }
-    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-    button, select {
-      font: inherit;
-      padding: 8px 14px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: var(--surface);
-      color: var(--ink);
-      cursor: pointer;
-    }
-    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button:hover:not(:disabled) { border-color: var(--accent); }
-    button:disabled { opacity: .55; cursor: wait; }
-    select { min-width: 260px; cursor: default; }
-    .divider { height: 1px; background: var(--line); margin: 18px 0; }
-    #result { display: none; margin-top: 16px; padding: 12px 14px; border-radius: 6px; background: #eef5fb; border: 1px solid #d4e5f5; font-size: 13px; }
-    #result.error { background: #fdf0f0; border-color: #f0d0d0; }
-    #result code { display: block; margin-top: 8px; word-break: break-all; background: #fff; padding: 8px; border: 1px solid var(--line); border-radius: 4px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
-    th { color: var(--muted); font-weight: 500; font-size: 12px; }
-    tr:last-child td { border-bottom: none; }
-    .ok { color: var(--ok); }
-    .bad { color: var(--bad); }
-    .muted { color: var(--muted); }
-    .tag { display: inline-block; padding: 1px 7px; border: 1px solid var(--line); border-radius: 10px; font-size: 11px; color: var(--muted); }
-    footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 28px; }
-    @media (max-width: 760px) { .cards { grid-template-columns: repeat(2, 1fr); } header { flex-direction: column; align-items: flex-start; } }
+    button { cursor:pointer; }
+    button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+    button.danger { color:var(--bad); }
+    button.mini { padding:3px 8px; font-size:12px; }
+    button:hover:not(:disabled) { border-color:var(--accent); }
+    button:disabled { opacity:.55; cursor:wait; }
+    select { min-width:150px; }
+    input[type=text], input[type=number] { min-width:120px; }
+    .tabs { display:flex; gap:6px; margin-bottom:16px; border-bottom:0.5px solid var(--line); }
+    .tab { padding:7px 14px; cursor:pointer; border-bottom:2px solid transparent; color:var(--muted); font-size:13px; }
+    .tab.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:500; }
+    .pane { display:none; } .pane.active { display:block; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { text-align:left; padding:8px 9px; border-bottom:0.5px solid var(--line); vertical-align:middle; }
+    th { color:var(--muted); font-weight:500; font-size:12px; }
+    tr:last-child td { border-bottom:none; }
+    .ok { color:var(--ok); } .bad { color:var(--bad); } .muted { color:var(--muted); }
+    .tag { display:inline-block; padding:1px 7px; border:0.5px solid var(--line); border-radius:10px; font-size:11px; color:var(--muted); }
+    .tag.on { color:var(--ok); border-color:var(--ok); } .tag.off { color:var(--muted); }
+    .bar { display:inline-block; width:70px; height:6px; border-radius:3px; background:#edf0f5; overflow:hidden; vertical-align:middle; margin-right:6px; }
+    .bar > i { display:block; height:100%; }
+    #result { display:none; margin-top:14px; padding:11px 13px; border-radius:6px; background:#eef5fb; border:0.5px solid #d4e5f5; font-size:13px; }
+    #result.error { background:#fdf0f0; border-color:#f0d0d0; }
+    #result code { display:block; margin-top:7px; white-space:pre-wrap; word-break:break-all; background:#fff;
+      padding:8px; border:0.5px solid var(--line); border-radius:4px; max-height:220px; overflow:auto; }
+    .modal-mask { display:none; position:fixed; inset:0; background:rgba(20,28,40,.42); z-index:50;
+      align-items:center; justify-content:center; }
+    .modal-mask.show { display:flex; }
+    .modal { background:var(--surface); border-radius:10px; padding:22px 24px; width:460px; max-width:92vw; }
+    .modal h3 { margin:0 0 16px; font-size:16px; font-weight:600; }
+    .field { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+    .field label { width:110px; text-align:right; color:var(--muted); font-size:13px; flex-shrink:0; }
+    .field input, .field select { flex:1; }
+    .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+    .pager { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:13px; color:var(--muted); }
+    footer { color:var(--muted); font-size:12px; text-align:center; margin-top:26px; }
+    @media (max-width:900px) { .cards { grid-template-columns:repeat(2,1fr); } header { flex-direction:column; align-items:flex-start; } }
   </style>
 </head>
 <body>
 {% csrf_token %}
 <div class="wrap">
-
   <header>
     <div>
       <h1>服务健康巡检 · 运维控制台</h1>
       <div class="sub">内部 HTTP 服务健康度管理 · 数据截至 {{ stat_date|default:"--" }}</div>
     </div>
-    <nav>
-      <a href="/api/">API 文档</a>
-      <a href="/admin/">后台管理</a>
-    </nav>
+    <nav><a href="/api/">API 文档</a><a href="/admin/">后台管理</a></nav>
   </header>
 
   <div class="cards">
-    <div class="card"><div class="label">纳管服务</div><div class="value">{{ service_total }}</div><div class="note">其中启用巡检 {{ service_enabled }}</div></div>
-    <div class="card"><div class="label">今日巡检</div><div class="value">{{ checks_today }}</div><div class="note">失败 {{ checks_failed_today }} 次</div></div>
-    <div class="card"><div class="label">昨日健康率</div><div class="value">{{ overall_rate }}%</div><div class="note">全部服务加权计算</div></div>
-    <div class="card"><div class="label">统计维度</div><div class="value">{{ summary|length }}</div><div class="note">环境 × 团队</div></div>
+    <div class="card"><div class="label">纳管服务</div><div class="value">{{ service_total }}</div><div class="note">启用 {{ service_enabled }}</div></div>
+    <div class="card"><div class="label">团队 / 环境</div><div class="value">{{ team_count }} / {{ env_count }}</div><div class="note">组织维度</div></div>
+    <div class="card"><div class="label">今日巡检</div><div class="value">{{ checks_today }}</div><div class="note">失败 {{ checks_failed_today }}</div></div>
+    <div class="card"><div class="label">昨日健康率</div><div class="value">{{ overall_rate }}%</div><div class="note">加权计算</div></div>
+    <div class="card"><div class="label">后台服务</div><div class="value" id="worker-card" style="font-size:16px">检测中…</div><div class="note">worker / beat</div></div>
   </div>
 
   <section>
-    <h2>快捷操作</h2>
-    <div class="row" style="margin-bottom:10px">
-      <span class="muted" style="font-size:12px">后台服务</span>
-      <span id="worker-badge" class="tag">检测中…</span>
-      <button id="btn-status" style="padding:4px 10px;font-size:12px">检查状态</button>
-      <button id="btn-start" class="primary" style="padding:4px 10px;font-size:12px">一键启动后台服务</button>
-      <button id="btn-logs" style="padding:4px 10px;font-size:12px">查看启动日志</button>
+    <div class="tabs">
+      <div class="tab active" data-pane="ops">巡检操作</div>
+      <div class="tab" data-pane="services">服务管理</div>
+      <div class="tab" data-pane="checks">巡检明细</div>
+      <div class="tab" data-pane="stats">统计分析</div>
+      <div class="tab" data-pane="org">团队与环境</div>
     </div>
-    <div class="row">
-      <button class="primary" data-task="inspect">立即全量巡检</button>
-      <button data-task="rotate">轮换全部 Token</button>
-      <button data-task="stat">重算昨日统计</button>
+
+    <!-- 巡检操作 -->
+    <div class="pane active" id="pane-ops">
+      <div class="between" style="margin-bottom:12px">
+        <div class="row">
+          <span class="muted" style="font-size:12px">后台服务</span>
+          <span id="worker-badge" class="tag">检测中…</span>
+          <button id="btn-status" class="mini">检查状态</button>
+          <button id="btn-start" class="primary mini">一键启动后台服务</button>
+          <button id="btn-logs" class="mini">查看启动日志</button>
+        </div>
+      </div>
+      <div class="row">
+        <button class="primary" data-task="inspect">立即全量巡检</button>
+        <button data-task="rotate">轮换全部 Token</button>
+        <button data-task="stat">重算昨日统计</button>
+      </div>
+      <div class="divider" style="height:1px;background:var(--line);margin:16px 0"></div>
+      <div class="row">
+        <select id="service-select">
+          {% for s in services %}<option value="{{ s.id }}">{{ s.name }} · {{ s.env__code }} · {{ s.token_hint }}</option>{% empty %}<option value="">暂无服务</option>{% endfor %}
+        </select>
+        <button id="btn-check" class="primary">手动体检</button>
+        <button id="btn-rotate">轮换该服务 Token</button>
+      </div>
+      <div id="result"></div>
     </div>
-    <div class="divider"></div>
-    <div class="row">
-      <select id="service-select">
-        {% for s in services %}
-        <option value="{{ s.id }}">{{ s.name }} · {{ s.env__code }} · {{ s.team__name }} · {{ s.token_hint }}</option>
-        {% empty %}
-        <option value="">暂无服务，请先在后台或 API 创建</option>
-        {% endfor %}
-      </select>
-      <button id="btn-check" class="primary">手动体检</button>
-      <button id="btn-rotate">轮换该服务 Token</button>
+
+    <!-- 服务管理 -->
+    <div class="pane" id="pane-services">
+      <div class="between" style="margin-bottom:12px">
+        <div class="row">
+          <input type="text" id="svc-q" placeholder="搜索服务名 / 地址">
+          <button id="svc-search">搜索</button>
+        </div>
+        <button class="primary" id="svc-add">+ 新增服务</button>
+      </div>
+      <table>
+        <thead><tr><th>服务</th><th>环境</th><th>团队</th><th>探测地址</th><th>超时</th><th>状态</th><th>Token</th><th>操作</th></tr></thead>
+        <tbody id="svc-body"></tbody>
+      </table>
+      <div class="pager" id="svc-pager"></div>
     </div>
-    <div id="result"></div>
+
+    <!-- 巡检明细 -->
+    <div class="pane" id="pane-checks">
+      <div class="row" style="margin-bottom:12px">
+        <select id="chk-service"><option value="">全部服务</option></select>
+        <select id="chk-env"><option value="">全部环境</option><option value="dev">dev</option><option value="test">test</option><option value="prod">prod</option></select>
+        <select id="chk-ok"><option value="">全部结果</option><option value="1">健康</option><option value="0">异常</option></select>
+        <button id="chk-search">筛选</button>
+      </div>
+      <table>
+        <thead><tr><th>时间</th><th>服务</th><th>环境</th><th>结果</th><th>状态码</th><th>耗时</th><th>触发</th><th>错误</th></tr></thead>
+        <tbody id="chk-body"></tbody>
+      </table>
+      <div class="pager">
+        <button class="mini" id="chk-prev">上一页</button>
+        <span id="chk-page">第 1 页</span>
+        <button class="mini" id="chk-next">下一页</button>
+      </div>
+    </div>
+
+    <!-- 统计分析 -->
+    <div class="pane" id="pane-stats">
+      <div class="row" style="margin-bottom:12px">
+        <select id="stat-date"><option value="">加载中…</option></select>
+        <button id="stat-refresh">切换日期</button>
+      </div>
+      <div class="between" style="margin-bottom:10px"><h2 style="margin:0">按服务健康率</h2><span class="muted" id="stat-summary"></span></div>
+      <table>
+        <thead><tr><th>服务</th><th>环境</th><th>团队</th><th>巡检次数</th><th>健康次数</th><th>健康率</th></tr></thead>
+        <tbody id="stat-body"></tbody>
+      </table>
+    </div>
+
+    <!-- 团队与环境 -->
+    <div class="pane" id="pane-org">
+      <div class="between">
+        <div style="flex:1;margin-right:20px">
+          <div class="between" style="margin-bottom:10px"><h2 style="margin:0">负责团队</h2><button class="primary mini" data-org-add="team">+ 新增团队</button></div>
+          <table><thead><tr><th>团队</th><th>负责人</th><th>服务数</th><th>操作</th></tr></thead><tbody id="team-body"></tbody></table>
+        </div>
+        <div style="flex:1">
+          <div class="between" style="margin-bottom:10px"><h2 style="margin:0">环境</h2><button class="primary mini" data-org-add="env">+ 新增环境</button></div>
+          <table><thead><tr><th>标识</th><th>名称</th><th>排序</th><th>操作</th></tr></thead><tbody id="env-body"></tbody></table>
+        </div>
+      </div>
+    </div>
   </section>
 
-  <section>
-    <h2>环境 × 团队健康率 <span class="muted" style="font-size:12px;font-weight:400">（{{ stat_date|default:"暂无数据" }}）</span></h2>
-    <table>
-      <thead><tr><th>环境</th><th>团队</th><th>服务数</th><th>巡检次数</th><th>健康率</th></tr></thead>
-      <tbody>
-        {% for row in summary %}
-        <tr>
-          <td>{{ row.env }}</td>
-          <td>{{ row.team }}</td>
-          <td>{{ row.services }}</td>
-          <td class="muted">{{ row.total }}</td>
-          <td class="{% if row.health_rate >= 90 %}ok{% else %}bad{% endif %}">{{ row.health_rate }}%</td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="5" class="muted">暂无统计数据，可在上方点「重算昨日统计」</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
+  <footer>所有写操作经 POST + CSRF 校验 · 敏感 Token 仅展示尾号，明文只在签发/轮换时返回一次</footer>
+</div>
 
-  <section>
-    <h2>最近巡检</h2>
-    <table>
-      <thead><tr><th>时间</th><th>服务</th><th>环境</th><th>结果</th><th>状态码</th><th>耗时</th><th>触发</th></tr></thead>
-      <tbody>
-        {% for log in recent_logs %}
-        <tr>
-          <td class="muted">{{ log.created_at|date:"m-d H:i:s" }}</td>
-          <td>{{ log.service.name }}</td>
-          <td class="muted">{{ log.service.env.code }}</td>
-          <td class="{% if log.ok %}ok{% else %}bad{% endif %}">{% if log.ok %}健康{% else %}异常{% endif %}</td>
-          <td>{{ log.status_code|default:"-" }}</td>
-          <td>{{ log.latency_ms|default:"-" }} ms</td>
-          <td><span class="tag">{{ log.get_trigger_display }}</span></td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="7" class="muted">暂无巡检记录</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
-
-  <footer>所有操作记录均保留在巡检明细与系统日志中 · 敏感 Token 仅以尾号展示</footer>
+<!-- 通用弹窗 -->
+<div class="modal-mask" id="modal-mask">
+  <div class="modal">
+    <h3 id="modal-title">编辑</h3>
+    <div id="modal-fields"></div>
+    <div id="modal-error" class="bad" style="font-size:12px;min-height:18px"></div>
+    <div class="modal-actions">
+      <button id="modal-cancel">取消</button>
+      <button class="primary" id="modal-save">保存</button>
+    </div>
+  </div>
 </div>
 
 <script>
   const resultBox = document.getElementById('result');
   const badge = document.getElementById('worker-badge');
-
-  // Django 把 csrftoken 写在 cookie 里；每次请求都重新读，页面放久了也不会因 token 轮转而 403
-  function cookie(name) {
-    const found = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
-    return found ? decodeURIComponent(found.pop()) : '';
+  function cookie(name){ const m=document.cookie.match('(^|;)\\s*'+name+'\\s*=\\s*([^;]+)'); return m?decodeURIComponent(m.pop()):''; }
+  function csrfToken(){ return cookie('csrftoken') || document.querySelector('[name=csrfmiddlewaretoken]').value; }
+  function show(message,isError,detail){
+    resultBox.style.display='block'; resultBox.className=isError?'error':'';
+    resultBox.textContent=message;
+    if(detail){ const code=document.createElement('code'); code.textContent=detail; resultBox.appendChild(code); }
   }
-  function csrfToken() {
-    return cookie('csrftoken') || document.querySelector('[name=csrfmiddlewaretoken]').value;
-  }
-
-  function show(message, isError, detail) {
-    resultBox.style.display = 'block';
-    resultBox.className = isError ? 'error' : '';
-    resultBox.textContent = message;
-    if (detail) {
-      const code = document.createElement('code');
-      code.textContent = detail;
-      resultBox.appendChild(code);
+  async function requestJSON(url,options){
+    const response=await fetch(url,options);
+    const ct=response.headers.get('content-type')||'';
+    if(!ct.includes('application/json')){
+      const html=await response.text();
+      throw new Error('HTTP '+response.status+(html.includes('CSRF')?'：CSRF 校验失败，请刷新页面':'：服务端返回非 JSON 响应'));
     }
-  }
-
-  async function requestJSON(url, options) {
-    const response = await fetch(url, options);
-    const contentType = response.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      // 服务端返回了 HTML（多为 403 CSRF / 404 / 500 调试页），不要把 '<!DOCTYPE' 塞给 JSON 解析
-      const html = await response.text();
-      const hint = html.includes('CSRF') ? 'CSRF 校验失败，请刷新页面后重试' : '服务端返回了非 JSON 响应';
-      throw new Error('HTTP ' + response.status + '：' + hint);
-    }
-    const data = await response.json();
-    if (!response.ok) {
-      const err = new Error(data.error || data.detail || 'HTTP ' + response.status);
-      err.payload = data;
-      throw err;
-    }
+    const data=await response.json();
+    if(!response.ok){ const e=new Error(data.error||data.detail||'HTTP '+response.status); e.payload=data; throw e; }
     return data;
   }
+  function post(url,body){ return requestJSON(url,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':csrfToken()},body:JSON.stringify(body||{})}); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function rateBar(rate){ const color=rate>=90?'var(--ok)':rate>=70?'var(--warn)':'var(--bad)';
+    return '<span class="bar"><i style="width:'+Math.min(100,rate)+'%;background:'+color+'"></i></span><span style="color:'+color+'">'+rate+'%</span>'; }
 
-  function post(url, body) {
-    return requestJSON(url, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken()},
-      body: JSON.stringify(body || {})
-    });
-  }
+  // ---- Tabs ----
+  document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('pane-'+tab.dataset.pane).classList.add('active');
+  }));
 
-  async function checkStatus() {
-    try {
-      const data = await requestJSON('/web/status/');
-      badge.textContent = data.online ? '在线 · ' + data.workers.length + ' 个 worker' : '未启动（任务将同步执行）';
-      badge.style.color = data.online ? 'var(--ok)' : 'var(--warn)';
+  // ---- Worker ----
+  async function checkStatus(){
+    try{
+      const data=await requestJSON('/web/status/');
+      const text=data.online?('在线 · '+data.workers.length+' 个 worker'):'未启动（任务将同步执行）';
+      badge.textContent=text; badge.style.color=data.online?'var(--ok)':'var(--warn)';
+      document.getElementById('worker-card').textContent=data.online?'在线':'未启动';
       return data.online;
-    } catch (e) {
-      badge.textContent = '检测失败';
-      badge.style.color = 'var(--bad)';
-      return false;
-    }
+    }catch(e){ badge.textContent='检测失败'; badge.style.color='var(--bad)'; return false; }
   }
-
-  document.getElementById('btn-status').addEventListener('click', () => checkStatus());
-  document.getElementById('btn-start').addEventListener('click', async (event) => {
-    const btn = event.currentTarget;
-    btn.disabled = true;
-    show('正在启动并等待就绪，最多 12 秒…', false);
-    try {
-      const data = await post('/web/start/');
-      show(data.message, false, '解释器：' + data.python + '\n进程 PID：' + data.pids.join(', '));
-      await checkStatus();
-    } catch (e) {
-      show('启动失败：' + e.message, true, e.payload && e.payload.log ? e.payload.log : undefined);
-    } finally {
-      btn.disabled = false;
-    }
-  });
-
-  document.getElementById('btn-logs').addEventListener('click', async () => {
-    try {
-      const data = await requestJSON('/web/logs/');
-      show('worker.log / beat.log 最新内容', !data.worker && !data.beat,
-           '---- worker ----\n' + (data.worker || '(空)') + '\n\n---- beat ----\n' + (data.beat || '(空)'));
-    } catch (e) {
-      show('读取日志失败：' + e.message, true);
-    }
-  });
-
-  async function run(button, action) {
-    button.disabled = true;
-    try {
-      const data = await post('/web/task/' + action + '/');
-      show(data.message, false, data.task_id ? '任务 ID：' + data.task_id : JSON.stringify(data.result));
-    } catch (e) {
-      show('执行失败：' + e.message, true);
-    } finally {
-      button.disabled = false;
-    }
-  }
-
+  document.getElementById('btn-status').onclick=checkStatus;
+  document.getElementById('btn-start').onclick=async(e)=>{
+    const btn=e.currentTarget; btn.disabled=true; show('正在启动并等待就绪，最多 12 秒…',false);
+    try{ const d=await post('/web/start/');
+      show(d.message,false,d.pids?'解释器：'+d.python+'\n进程 PID：'+d.pids.join(', '):undefined); await checkStatus();
+    }catch(err){ show('启动失败：'+err.message,true,err.payload&&err.payload.log?err.payload.log:undefined); }
+    finally{ btn.disabled=false; }
+  };
+  document.getElementById('btn-logs').onclick=async()=>{
+    try{ const d=await requestJSON('/web/logs/');
+      show('worker.log / beat.log 最新内容',!d.worker&&!d.beat,
+        '---- worker ----\n'+(d.worker||'(空)')+'\n\n---- beat ----\n'+(d.beat||'(空)'));
+    }catch(e){ show('读取日志失败：'+e.message,true); }
+  };
   checkStatus();
 
-  document.querySelectorAll('[data-task]').forEach(btn => {
-    btn.addEventListener('click', () => run(btn, btn.dataset.task));
+  // ---- Tasks ----
+  document.querySelectorAll('[data-task]').forEach(btn=>btn.onclick=async()=>{
+    btn.disabled=true;
+    try{ const d=await post('/web/task/'+btn.dataset.task+'/');
+      show(d.message,false,d.task_id?'任务 ID：'+d.task_id:(d.result?JSON.stringify(d.result):undefined));
+    }catch(e){ show('执行失败：'+e.message,true); }
+    finally{ btn.disabled=false; }
   });
+  document.getElementById('btn-check').onclick=async(e)=>{
+    const btn=e.currentTarget, id=document.getElementById('service-select').value;
+    if(!id) return show('请先选择一个服务',true);
+    btn.disabled=true;
+    try{ const d=await post('/api/services/'+id+'/check/');
+      show(d.ok?'体检完成：该服务健康':'体检完成：该服务异常',!d.ok,
+        (d.ok?'状态码 '+d.status_code+' · 耗时 '+d.latency_ms+' ms':d.error)+' · '+d.health_url);
+    }catch(err){ show('请求失败：'+err.message,true); }
+    finally{ btn.disabled=false; }
+  };
+  document.getElementById('btn-rotate').onclick=async(e)=>{
+    const btn=e.currentTarget, id=document.getElementById('service-select').value;
+    if(!id) return show('请先选择一个服务',true);
+    btn.disabled=true;
+    try{ const d=await post('/api/services/'+id+'/rotate-token/');
+      show('轮换完成，明文仅显示这一次：',false,d.token);
+    }catch(err){ show('轮换失败：'+err.message,true); }
+    finally{ btn.disabled=false; }
+  };
 
-  document.getElementById('btn-check').addEventListener('click', async (event) => {
-    const btn = event.currentTarget;
-    const id = document.getElementById('service-select').value;
-    if (!id) return show('请先选择一个服务', true);
-    btn.disabled = true;
-    try {
-      const data = await post('/api/services/' + id + '/check/');
-      const detail = data.ok
-        ? '状态码 ' + data.status_code + ' · 耗时 ' + data.latency_ms + ' ms · ' + data.health_url
-        : data.error + ' · ' + data.health_url;
-      show(data.ok ? '体检完成：该服务健康' : '体检完成：该服务异常', !data.ok, detail);
-    } catch (e) {
-      show('体检请求失败：' + e.message, true);
-    } finally {
-      btn.disabled = false;
+  // ---- Modal ----
+  let modalConfig=null;
+  function openModal(title,fields,onSave){ modalConfig=onSave;
+    document.getElementById('modal-title').textContent=title;
+    document.getElementById('modal-error').textContent='';
+    document.getElementById('modal-fields').innerHTML=fields.map(f=>
+      '<div class="field"><label>'+esc(f.label)+'</label>'+
+      (f.type==='select'
+        ? '<select data-key="'+f.key+'">'+f.options.map(o=>'<option value="'+esc(o.v)+'"'+(String(o.v)===String(f.value)?' selected':'')+'>'+esc(o.t)+'</option>').join('')+'</select>'
+        : '<input type="'+f.type+'" data-key="'+f.key+'" value="'+esc(f.value)+'"></div>')
+    ).join('');
+    document.getElementById('modal-mask').classList.add('show');
+  }
+  function closeModal(){ document.getElementById('modal-mask').classList.remove('show'); modalConfig=null; }
+  document.getElementById('modal-cancel').onclick=closeModal;
+  document.getElementById('modal-mask').onclick=(e)=>{ if(e.target.id==='modal-mask') closeModal(); };
+  document.getElementById('modal-save').onclick=async()=>{
+    const data={};
+    document.querySelectorAll('#modal-fields [data-key]').forEach(el=>{ data[el.dataset.key]=el.value; });
+    try{ await modalConfig(data); closeModal(); await Promise.all([loadServices(),loadOrg()]); }
+    catch(e){ document.getElementById('modal-error').textContent=e.message; }
+  };
+  const optsFrom=(items)=>items.map(x=>({v:x.id,t:x.name}));
+
+  // ---- Services ----
+  let teamsCache=[], envsCache=[];
+  async function loadServices(){
+    const q=document.getElementById('svc-q').value.trim();
+    const d=await requestJSON('/web/services/?q='+encodeURIComponent(q));
+    document.getElementById('svc-body').innerHTML=d.results.length?d.results.map(s=>
+      '<tr><td><b>'+esc(s.name)+'</b></td><td><span class="tag">'+esc(s.env_code)+'</span></td>'+
+      '<td>'+esc(s.team_name)+'</td><td class="muted" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(s.health_url)+'</td>'+
+      '<td>'+s.timeout_seconds+'s</td>'+
+      '<td><span class="tag '+(s.enabled?'on':'off')+'">'+(s.enabled?'启用':'停用')+'</span></td>'+
+      '<td class="muted">'+esc(s.token_hint||'—')+'</td>'+
+      '<td><button class="mini" data-toggle="'+s.id+'">'+(s.enabled?'停用':'启用')+'</button> '+
+      '<button class="mini" data-edit="'+s.id+'">编辑</button> '+
+      '<button class="mini danger" data-del="'+s.id+'">删除</button></td></tr>'
+    ).join(''):'<tr><td colspan="8" class="muted">暂无服务</td></tr>';
+    document.getElementById('svc-pager').textContent='共 '+d.count+' 个服务';
+    document.getElementById('svc-body').querySelectorAll('[data-toggle]').forEach(b=>b.onclick=async()=>{
+      await post('/web/services/'+b.dataset.toggle+'/toggle/'); await loadServices();
+    });
+    document.getElementById('svc-body').querySelectorAll('[data-edit]').forEach(b=>b.onclick=()=>{
+      const s=d.results.find(x=>x.id==b.dataset.edit); openServiceModal(s);
+    });
+    document.getElementById('svc-body').querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
+      if(!confirm('确认删除该服务？相关巡检明细与统计会一并删除。')) return;
+      try{ await post('/web/services/'+b.dataset.del+'/delete/'); await loadServices(); }
+      catch(e){ alert(e.message); }
+    });
+  }
+  function openServiceModal(s){
+    const fields=[
+      {key:'name',label:'服务名',type:'text',value:s?s.name:''},
+      {key:'env',label:'环境',type:'select',value:s?s.env:(envsCache[0]&&envsCache[0].id),options:envsCache.map(e=>({v:e.id,t:e.name+'('+e.code+')'}))},
+      {key:'team',label:'负责团队',type:'select',value:s?s.team:(teamsCache[0]&&teamsCache[0].id),options:teamsCache.map(t=>({v:t.id,t:t.name}))},
+      {key:'base_url',label:'基础地址',type:'text',value:s?s.base_url:''},
+      {key:'health_path',label:'健康路径',type:'text',value:s?s.health_path:'/health'},
+      {key:'http_method',label:'请求方法',type:'select',value:s?s.http_method:'GET',options:[{v:'GET',t:'GET'},{v:'HEAD',t:'HEAD'}]},
+      {key:'timeout_seconds',label:'超时(秒)',type:'number',value:s?s.timeout_seconds:3},
+      {key:'verify_tls',label:'校验TLS(1/0)',type:'text',value:s?(s.verify_tls?1:0):1},
+      {key:'enabled',label:'启用(1/0)',type:'text',value:s?(s.enabled?1:0):1},
+    ];
+    openModal(s?'编辑服务':'新增服务',fields,async(data)=>{
+      data.verify_tls=data.verify_tls==='1'; data.enabled=data.enabled==='1';
+      if(s) await post('/web/services/'+s.id+'/update/',data);
+      else { const r=await post('/web/services/create/',data); alert('服务已创建，Token 明文（仅此一次）：\n'+r.token); }
+    });
+  }
+  document.getElementById('svc-add').onclick=()=>openServiceModal(null);
+  document.getElementById('svc-search').onclick=loadServices;
+
+  // ---- Checks ----
+  let checkPage=1;
+  async function loadChecks(){
+    const params=new URLSearchParams({page:checkPage});
+    const svc=document.getElementById('chk-service').value, env=document.getElementById('chk-env').value, ok=document.getElementById('chk-ok').value;
+    if(svc) params.set('service',svc); if(env) params.set('env',env); if(ok) params.set('ok',ok);
+    const d=await requestJSON('/web/checks/?'+params);
+    document.getElementById('chk-body').innerHTML=d.results.length?d.results.map(r=>
+      '<tr><td class="muted">'+esc(r.created_at.slice(0,19).replace('T',' '))+'</td><td>'+esc(r.service_name)+'</td>'+
+      '<td class="muted">'+esc(r.env_code)+'</td><td class="'+(r.ok?'ok':'bad')+'">'+(r.ok?'健康':'异常')+'</td>'+
+      '<td>'+(r.status_code||'-')+'</td><td>'+(r.latency_ms||'-')+' ms</td><td>'+esc(r.trigger)+'</td>'+
+      '<td class="muted" title="'+esc(r.error)+'">'+esc((r.error||'').slice(0,30))+'</td></tr>'
+    ).join(''):'<tr><td colspan="8" class="muted">没有符合条件的记录</td></tr>';
+    document.getElementById('chk-page').textContent='第 '+d.page+' / '+d.pages+' 页 · 共 '+d.total+' 条';
+    document.getElementById('chk-prev').disabled=d.page<=1;
+    document.getElementById('chk-next').disabled=d.page>=d.pages;
+  }
+  document.getElementById('chk-search').onclick=()=>{ checkPage=1; loadChecks(); };
+  document.getElementById('chk-prev').onclick=()=>{ if(checkPage>1){checkPage--;loadChecks();} };
+  document.getElementById('chk-next').onclick=()=>{ checkPage++;loadChecks(); };
+
+  // ---- Stats ----
+  async function loadStats(){
+    const date=document.getElementById('stat-date').value;
+    const d=await requestJSON('/web/stats/'+(date?'?date='+date:''));
+    const sel=document.getElementById('stat-date');
+    if(sel.options.length<=1||sel.options[0].value==='加载中…'){
+      sel.innerHTML=d.dates.map(x=>'<option value="'+x+'"'+(x===d.stat_date?' selected':'')+'>'+x+'</option>').join('');
+    }
+    document.getElementById('stat-body').innerHTML=d.services.length?d.services.map(r=>
+      '<tr><td>'+esc(r.service_name)+'</td><td>'+esc(r.env)+'</td><td>'+esc(r.team)+'</td>'+
+      '<td>'+r.total+'</td><td>'+r.ok_count+'</td><td>'+rateBar(r.health_rate)+'</td></tr>'
+    ).join(''):'<tr><td colspan="6" class="muted">该日期暂无统计数据</td></tr>';
+    const total=d.services.reduce((a,r)=>a+r.total,0), ok=d.services.reduce((a,r)=>a+r.ok_count,0);
+    document.getElementById('stat-summary').textContent=d.stat_date+' · 共 '+d.services.length+' 个服务 · '+ok+'/'+total+' 次健康';
+  }
+  document.getElementById('stat-refresh').onclick=()=>loadStats();
+
+  // ---- Org ----
+  async function loadOrg(){
+    const [t,e]=await Promise.all([requestJSON('/web/teams/'),requestJSON('/web/environments/')]);
+    teamsCache=t.results; envsCache=e.results;
+    document.getElementById('team-body').innerHTML=t.results.length?t.results.map(x=>
+      '<tr><td>'+esc(x.name)+'</td><td>'+esc(x.owner||'—')+'</td><td>'+x.service_count+'</td>'+
+      '<td><button class="mini" data-te="-'+x.id+'">编辑</button> <button class="mini danger" data-td="'+x.id+'">删除</button></td></tr>'
+    ).join(''):'<tr><td colspan="4" class="muted">暂无团队</td></tr>';
+    document.getElementById('env-body').innerHTML=e.results.length?e.results.map(x=>
+      '<tr><td><span class="tag">'+esc(x.code)+'</span></td><td>'+esc(x.name)+'</td><td>'+x.sort_order+'</td>'+
+      '<td><button class="mini" data-ee="'+x.id+'">编辑</button> <button class="mini danger" data-ed="'+x.id+'">删除</button></td></tr>'
+    ).join(''):'<tr><td colspan="4" class="muted">暂无环境</td></tr>';
+    const selS=document.getElementById('chk-service'), selOps=document.getElementById('service-select');
+    if(selS.options.length<=1){ const ds=await requestJSON('/web/services/');
+      ds.results.forEach(s=>{ selS.add(new Option(s.name+'('+s.env_code+')',s.id)); }); }
+    document.getElementById('team-body').querySelectorAll('[data-te]').forEach(b=>b.onclick=()=>{
+      const x=t.results.find(y=>y.id==b.dataset.te.substring(1));
+      openModal('编辑团队',[{key:'name',label:'团队名称',type:'text',value:x.name},{key:'owner',label:'负责人',type:'text',value:x.owner}],
+        async d=>{ await post('/web/teams/'+x.id+'/save/',d); });
+    });
+    document.getElementById('team-body').querySelectorAll('[data-td]').forEach(b=>b.onclick=async()=>{
+      try{ await post('/web/teams/'+b.dataset.td+'/delete/'); await loadOrg(); }catch(e){ alert(e.message); }
+    });
+    document.getElementById('env-body').querySelectorAll('[data-ee]').forEach(b=>b.onclick=()=>{
+      const x=e.results.find(y=>y.id==b.dataset.ee);
+      openModal('编辑环境',[
+        {key:'code',label:'标识(dev/test/prod)',type:'text',value:x.code},
+        {key:'name',label:'名称',type:'text',value:x.name},
+        {key:'sort_order',label:'排序',type:'number',value:x.sort_order}],
+        async d=>{ await post('/web/environments/'+x.id+'/save/',d); });
+    });
+    document.getElementById('env-body').querySelectorAll('[data-ed]').forEach(b=>b.onclick=async()=>{
+      try{ await post('/web/environments/'+b.dataset.ed+'/delete/'); await loadOrg(); }catch(e){ alert(e.message); }
+    });
+  }
+  document.querySelectorAll('[data-org-add]').forEach(b=>b.onclick=()=>{
+    if(b.dataset.orgAdd==='team'){
+      openModal('新增团队',[{key:'name',label:'团队名称',type:'text',value:''},{key:'owner',label:'负责人',type:'text',value:''}],
+        async d=>{ await post('/web/teams/save/',d); });
+    }else{
+      openModal('新增环境',[
+        {key:'code',label:'标识(dev/test/prod)',type:'text',value:'dev'},
+        {key:'name',label:'名称',type:'text',value:''},
+        {key:'sort_order',label:'排序',type:'number',value:0}],
+        async d=>{ await post('/web/environments/save/',d); });
     }
   });
 
-  document.getElementById('btn-rotate').addEventListener('click', async (event) => {
-    const btn = event.currentTarget;
-    const id = document.getElementById('service-select').value;
-    if (!id) return show('请先选择一个服务', true);
-    btn.disabled = true;
-    try {
-      const data = await post('/api/services/' + id + '/rotate-token/');
-      show('轮换完成。明文仅显示这一次，请及时下发：', false, data.token);
-    } catch (e) {
-      show('轮换失败：' + e.message, true);
-    } finally {
-      btn.disabled = false;
-    }
-  });
+  // 初始加载
+  Promise.all([loadServices(),loadChecks(),loadStats(),loadOrg()]).catch(e=>show('加载数据失败：'+e.message,true));
 </script>
 </body>
 </html>

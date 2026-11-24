@@ -21,7 +21,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from . import tasks
-from .models import DailyHealthStat, HealthCheckLog, Service
+from .models import DailyHealthStat, Environment, HealthCheckLog, Service, Team
 
 TASK_ACTIONS = {
     "inspect": (
@@ -161,6 +161,8 @@ def dashboard(request):
         "stat_date": stat_date,
         "service_total": service_total,
         "service_enabled": service_enabled,
+        "team_count": Team.objects.count(),
+        "env_count": Environment.objects.count(),
         "checks_today": checks_today,
         "checks_failed_today": checks_failed_today,
         "overall_rate": overall_rate,
