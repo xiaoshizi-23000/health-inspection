@@ -333,6 +333,35 @@ class DashboardTests(TestCase):
         self.assertIn("worker", response.json())
         self.assertIn("beat", response.json())
 
+    def test_online_workers_fallback_for_broken_web_kombu(self):
+        """Web 解释器 kombu 坏掉（3.13 + redis-py 6.0）时：
+        inspect 抛异常 → 降级用 PID 存活 + 日志 ready 判定在线。
+        这是 11-24 晚实际踩到的坑：worker 明明活着却显示离线。"""
+        from inspection.web import online_workers
+
+        with mock.patch("inspection.web.current_app") as app, \
+             mock.patch("inspection.web.read_worker_state",
+                        return_value={"pid": 999, "nodename": "inspect@abc"}), \
+             mock.patch("inspection.web.worker_ready_in_log", return_value=True), \
+             mock.patch("inspection.web.process_alive", return_value=True):
+            app.control.inspect.side_effect = RuntimeError("VersionMismatch")
+            workers = online_workers()
+        self.assertEqual(workers, {"inspect@abc": {}})
+
+    def test_trigger_task_falls_back_when_delay_fails(self):
+        """worker 在线但 Web 端投递失败（kombu 坏）→ 自动同步执行。"""
+        eager = mock.Mock(result={"checked": 9})
+        with mock.patch("inspection.web.online_workers", return_value={"w1": {}}), \
+             mock.patch("inspection.web.tasks.inspect_all_services.delay",
+                        side_effect=RuntimeError("VersionMismatch")), \
+             mock.patch("inspection.web.tasks.inspect_all_services.apply",
+                        return_value=eager):
+            response = self.client.post("/web/task/inspect/")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["mode"], "sync")
+        self.assertIn("降级", body["message"])
+
     @override_settings(
         PYTHON_EXECUTABLE="",
         CELERY_BROKER_URL="redis://127.0.0.1:6379/0",

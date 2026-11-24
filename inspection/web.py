@@ -92,10 +92,13 @@ def online_workers() -> dict:
     except Exception:
         pass
 
+    # 降级：inspect 不可用时（Web 解释器的 kombu 版本不匹配等），
+    # 用「状态文件的 PID 存活 + 日志 ready」判断。注意状态文件只记录
+    # pid/nodename，ready 标记要从日志里读——之前在这里误查
+    # state["log_ready"]（从未被写入），导致降级永远不生效。
     state = read_worker_state()
-    if state.get("pid") and state.get("log_ready") and process_alive(state["pid"]):
-        hostname = state.get("nodename", "worker")
-        return {hostname: {}}
+    if state.get("pid") and worker_ready_in_log() and process_alive(state["pid"]):
+        return {state.get("nodename", "worker"): {}}
     return {}
 
 
@@ -445,10 +448,24 @@ def trigger_task(request, action: str):
     task, message = config
 
     if online_workers():
-        result = task.delay()
-        return JsonResponse(
-            {"ok": True, "mode": "async", "task_id": result.id, "message": message + "（异步）"}
-        )
+        try:
+            result = task.delay()
+            return JsonResponse(
+                {"ok": True, "mode": "async", "task_id": result.id, "message": message + "（异步）"}
+            )
+        except Exception as exc:
+            # worker 在线但 Web 进程的 kombu 坏掉（如解释器 redis-py 版本不匹配）
+            # 时投递会失败——降级同步执行，保证按钮永远有结果。
+            outcome = task.apply()
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "mode": "sync",
+                    "result": outcome.result,
+                    "message": message + "（同步执行：投递失败已自动降级——"
+                    f"Web 解释器 kombu 不可用 [{type(exc).__name__}]，建议 PyCharm 切到 Python 3.12）",
+                }
+            )
 
     # worker 不在：同步跑一遍，结果直接回显
     outcome = task.apply()
