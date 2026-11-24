@@ -127,30 +127,37 @@ def worker_status(request):
 
 
 def find_python() -> str:
-    """挑一个真正装了 Django + Celery 的解释器。
+    """挑一个真正能跑起 Celery 的解释器——不是"import 成功"就算数。
 
-    关键点：不能直接用 sys.executable——如果 Web 进程是 PyCharm 用 3.13 起的，
-    而依赖装在 3.12，弹出的 cmd 就会 ModuleNotFoundError 然后瞬间闪退。
+    踩过的坑：3.13 里 django/celery 都能 import，但 redis-py 是 6.0.0，
+    kombu 要求 >= 6.1.0，worker 启动即崩。所以必须实际连一次 broker 才算可用。
+
+    候选顺序：显式配置 → 已知的 3.12 → 当前解释器（最后兜底）。
     """
     candidates = [
-        sys.executable,
         getattr(settings, "PYTHON_EXECUTABLE", ""),
         r"C:\Users\23000\AppData\Local\Programs\Python\Python312\python.exe",
+        sys.executable,
     ]
+    broker = getattr(settings, "CELERY_BROKER_URL", "redis://127.0.0.1:6379/0")
+    # 让候选解释器自己验证：依赖齐全 + kombu 能连上 broker（版本不匹配会在这里炸）
+    probe = (
+        "import sys, django, celery, rest_framework, kombu; "
+        f"from kombu import Connection; Connection({broker!r}).ensure_connection(max_retries=0); "
+        "sys.exit(0)"
+    )
     for candidate in candidates:
         if not candidate or not Path(candidate).exists():
             continue
         try:
             check = subprocess.run(
-                [candidate, "-c", "import django, celery, rest_framework"],
-                capture_output=True,
-                timeout=10,
+                [candidate, "-c", probe], capture_output=True, timeout=10
             )
             if check.returncode == 0:
                 return candidate
         except (OSError, subprocess.SubprocessError):
             continue
-    return sys.executable  # 都不行就交给你自己的解释器，至少日志能说明原因
+    return sys.executable  # 都不行就交给当前解释器，日志会说明真实原因
 
 
 def log_tail(name: str, limit: int = 30) -> str:

@@ -328,3 +328,21 @@ class DashboardTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("worker", response.json())
         self.assertIn("beat", response.json())
+
+    @override_settings(
+        PYTHON_EXECUTABLE="",
+        CELERY_BROKER_URL="redis://127.0.0.1:6379/0",
+    )
+    def test_find_python_skips_broken_interpreter(self):
+        """3.13 能 import 但 kombu 连不上 broker（redis-py 版本低），必须被跳过。"""
+        from inspection.web import find_python
+
+        py313 = r"C:\Users\23000\AppData\Local\Programs\Python\Python313\python.exe"
+        py312 = r"C:\Users\23000\AppData\Local\Programs\Python\Python312\python.exe"
+        outcomes = [mock.Mock(returncode=1), mock.Mock(returncode=0), mock.Mock(returncode=1)]
+        with mock.patch("inspection.web.Path.exists", return_value=True), \
+             mock.patch("inspection.web.subprocess.run", side_effect=outcomes) as run:
+            chosen = find_python()
+        self.assertEqual(chosen, py312)
+        self.assertEqual(run.call_count, 2)  # 第一个失败后试第二个，成功即止
+        self.assertIn("ensure_connection", run.call_args_list[0].args[0][-1])

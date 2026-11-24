@@ -118,6 +118,10 @@ REST_FRAMEWORK = {
 # --------------------------------------------------------------------------
 # Celery
 # --------------------------------------------------------------------------
+# 一键启动后台服务时优先使用的解释器（必须装齐 django/celery/drf 且 redis-py >= 6.1）
+# 留空则自动探测：依次尝试当前解释器、Python312 安装路径，选第一个能连上 broker 的。
+PYTHON_EXECUTABLE = env("PYTHON_EXECUTABLE", "")
+
 CELERY_BROKER_URL = env("CELERY_BROKER_URL", "redis://127.0.0.1:6379/0")
 CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", "redis://127.0.0.1:6379/1")
 CELERY_TASK_SERIALIZER = "json"
